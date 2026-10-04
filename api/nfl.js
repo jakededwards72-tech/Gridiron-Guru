@@ -171,30 +171,93 @@ for(const p of players){
   p.matchup={projectionStatus:m.status==='FINAL'?'FINAL':'MATCHUP ADJUSTED',status:m.status,bye:false,opponent:m.opponent,home:m.home,rest:m.rest,opponentRest:m.opponentRest,neutral:m.neutral,expectedQb:m.expectedQb,opponentQb:m.opponentQb,venue:m.venue,weather:m.weather,factor:Number(factor.toFixed(3)),grade,baseline:Number(base.toFixed(1)),contextYards:Number((base*factor).toFixed(1)),defense:m.defense,positionDefense:posDef,intelligence:{offenseAdvanced:offAdv,snapWeight:Number(snapWeight.toFixed(3)),expectedPlayerSnaps:expectedPlayerSnaps?Number(expectedPlayerSnaps.toFixed(1)):null,positionVolumeFactor:Number(positionVolFactor.toFixed(3)),positionEfficiencyFactor:Number(positionEffFactor.toFixed(3)),positionCatchFactor:Number(positionCatchFactor.toFixed(3)),receivingEfficiencyFactor:Number(receivingEffFactor.toFixed(3)),rushingEfficiencyFactor:Number(rushingEffFactor.toFixed(3)),tdEnvironmentFactor:Number(tdEnvFactor.toFixed(3))},environment:{expectedPlays:Number(expectedPlays.toFixed(1)),passRate:Number((expectedPassRate*100).toFixed(1)),teamAttempts:Number(expectedAtt.toFixed(1)),teamCarries:Number(expectedCarries.toFixed(1)),teamTargets:Number(expectedTargets.toFixed(1)),playerVolume:Number(playerVolume.toFixed(1)),passVolumeFactor:Number(passVolFactor.toFixed(3)),rushVolumeFactor:Number(rushVolFactor.toFixed(3)),targetVolumeFactor:Number(targetVolFactor.toFixed(3)),efficiencyFactor:Number(factor.toFixed(3)),rawPassFactor:Number(rawPassEffFactor.toFixed(3)),advancedPassFactor:Number(advancedPassFactor.toFixed(3))},projection:Number(firstProjection.toFixed(1)),projectedStats};
 
   const fmt1=x=>Number.isFinite(Number(x))?Number(x).toFixed(1):'—';
-  const recentVals=(p.trend||[]).map(g=>p.pos==='QB'?n(g.pass):p.pos==='RB'?n(g.rush):n(g.rec)).filter(x=>x>=0);
-  const recentAvg=recentVals.length?mean(recentVals):0;
-  const usageMove=p.role?.status==='SURGING'?'His opportunity has been trending upward recently.':p.role?.status==='DECLINING'?'His recent opportunity has moved below his season-long role.':'His recent workload has been relatively stable.';
-  const gradeText=grade==='FAVORABLE'?('The matchup leans favorable for '+p.pos+' production based on the opponent\'s current efficiency and position-specific profile.'):grade==='TOUGH'?('The matchup is tougher than league average for '+p.pos+' production, which pulls the forecast down from a pure usage-based expectation.'):'The matchup grades close to neutral, so role and expected volume drive more of the projection than the opponent adjustment.';
-  const snapText=p.usage?.snapGames?('He has handled '+fmt1(p.usage.recentSnapPct)+'% of offensive snaps recently'+(Math.abs(n(p.usage.snapTrend))>=4?(', a '+(n(p.usage.snapTrend)>0?'rise':'drop')+' of '+fmt1(Math.abs(n(p.usage.snapTrend)))+' percentage points from his broader sample'):'')+'.'):'Live snap participation is not available for this player, so role is inferred from opportunity and team usage.';
-  const injuryText=p.injury?(' He is currently listed '+String(p.injury.status||'').toLowerCase()+(p.injury.detail?(' with '+String(p.injury.detail).toLowerCase()):'')+(p.injury.practice?(' after '+String(p.injury.practice).toLowerCase()):'')+', adding availability and workload uncertainty.'):'';
-  const environmentText='The model expects '+fmt1(expectedPlays)+' team plays with a '+fmt1(expectedPassRate*100)+'% pass rate in this game.';
-  let lead='',volume='',risk='';
-  if(p.pos==='QB'){
-    lead=p.name+' enters Week '+nextWeek+' as the projected starting quarterback against '+m.opponent+'. Gridiron Guru projects '+fmt1(projectedStats.passAttempts)+' attempts for '+fmt1(projectedStats.passYards)+' passing yards and '+fmt1(projectedStats.passTDs)+' passing touchdowns, with '+fmt1(projectedStats.rushYards)+' additional rushing yards.';
-    volume='His passing forecast uses a starter-attempt baseline of '+fmt1(p.model?.starterAttemptBase)+' and a matchup-adjusted '+fmt1(projectedStats.matchupYPA||p.model?.passYPA)+' yards per attempt. '+gradeText;
-    risk='The biggest swing factors are game pace, pass volume and how efficiently the offense handles the opponent\'s pressure profile.';
-  }else if(p.pos==='RB'){
-    lead=p.name+' projects as a '+String(p.role?.expectedRole||'backfield contributor').toLowerCase()+' against '+m.opponent+', with '+fmt1(projectedStats.carries)+' carries for '+fmt1(projectedStats.rushYards)+' rushing yards plus '+fmt1(projectedStats.receptions)+' catches for '+fmt1(projectedStats.recYards)+' receiving yards.';
-    volume=snapText+' '+usageMove+' '+gradeText;
-    risk='The main variables are backfield share, passing-game involvement and touchdown opportunity; the current model gives him '+fmt1((projectedStats.rushTDs||0)+(projectedStats.recTDs||0))+' expected total touchdowns.';
-  }else{
-    lead=p.name+' is projected for '+fmt1(projectedStats.targets)+' targets, '+fmt1(projectedStats.receptions)+' receptions and '+fmt1(projectedStats.recYards)+' receiving yards against '+m.opponent+', with '+fmt1(projectedStats.recTDs)+' expected receiving touchdowns.';
-    volume='He currently profiles as a '+String(p.role?.expectedRole||'receiving option').toLowerCase()+'. '+snapText+' '+usageMove+' '+gradeText;
-    risk='Target share and catch efficiency are the primary swing variables. The model is expecting '+fmt1(expectedTargets)+' total team targets, putting his projected individual volume at '+fmt1(projectedStats.targets)+'.';
-  }
-  const sampleNote=p.games<4?' Early-season sample size is still limited, so prior-season information and league-level regression remain part of the efficiency estimate.':'';
-  const recentNote=recentVals.length?(' His recent '+(p.pos==='QB'?'passing':p.pos==='RB'?'rushing':'receiving')+' production has averaged '+fmt1(recentAvg)+' yards per game across the available 2026 sample.'):'';
-  p.analysis={title:'Week '+nextWeek+' Outlook',lead,body:volume+' '+environmentText+recentNote+injuryText+sampleNote,risk,updated:'MODEL-GENERATED FROM CURRENT WEEK INPUTS'};
+  const recentGames=[...rows].sort((a,b)=>n(a.week)-n(b.week)).slice(-3);
+  const lastGame=recentGames.at(-1),prevGame=recentGames.at(-2);
+  const oppLabel=r=>r?.opponent_team?(' against '+r.opponent_team):'';
+  const intWord=x=>n(x)===1?'interception':'interceptions';
+  const tdWord=x=>n(x)===1?'touchdown':'touchdowns';
+  const gameLine=(r)=>{
+    if(!r)return'';
+    if(p.pos==='QB'){
+      const comp=n(r.completions),att0=n(r.attempts),py=n(r.passing_yards),ptd=n(r.passing_tds),ints=n(r.interceptions),ra=n(r.carries),ry=n(r.rushing_yards);
+      let z='In Week '+n(r.week)+oppLabel(r)+', he completed '+comp+' of '+att0+' passes for '+py+' yards';
+      if(ptd||ints)z+=', throwing '+ptd+' '+tdWord(ptd)+(ints?' and '+ints+' '+intWord(ints):'');
+      if(ra)z+=' while adding '+ry+' rushing yards on '+ra+' carries';
+      return z+'.';
+    }
+    if(p.pos==='RB'){
+      const car=n(r.carries),ry=n(r.rushing_yards),rtd=n(r.rushing_tds),tgt=n(r.targets),rec=n(r.receptions),recy=n(r.receiving_yards),rectd=n(r.receiving_tds);
+      let z='In Week '+n(r.week)+oppLabel(r)+', he rushed '+car+' times for '+ry+' yards';
+      if(rtd)z+=' and '+rtd+' rushing '+tdWord(rtd);
+      if(tgt||rec)z+=', adding '+rec+' catches on '+tgt+' targets for '+recy+' yards';
+      if(rectd)z+=' and '+rectd+' receiving '+tdWord(rectd);
+      return z+'.';
+    }
+    const tgt=n(r.targets),rec=n(r.receptions),recy=n(r.receiving_yards),td=n(r.receiving_tds);
+    let z='In Week '+n(r.week)+oppLabel(r)+', he caught '+rec+' of '+tgt+' targets for '+recy+' yards';
+    if(td)z+=' and '+td+' '+tdWord(td);
+    return z+'.';
+  };
+  const seasonSummary=()=>{
+    if(p.pos==='QB')return 'Through '+p.games+' games, he is averaging '+fmt1(p.passing.att)+' attempts and '+fmt1(p.passing.yds)+' passing yards per game.';
+    if(p.pos==='RB')return 'Through '+p.games+' games, he is averaging '+fmt1(p.rushing.att)+' carries, '+fmt1(p.rushing.yds)+' rushing yards and '+fmt1(p.receiving.targets)+' targets per game.';
+    return 'Through '+p.games+' games, he is averaging '+fmt1(p.receiving.targets)+' targets, '+fmt1(p.receiving.rec)+' receptions and '+fmt1(p.receiving.yds)+' receiving yards per game.';
+  };
+  const trendSentence=()=>{
+    if(!lastGame||!prevGame)return'';
+    if(p.pos==='QB'){
+      const a=n(prevGame.passing_yards),b=n(lastGame.passing_yards),attA=n(prevGame.attempts),attB=n(lastGame.attempts);
+      if(Math.abs(b-a)>=60)return b>a?'That was a clear step up from his Week '+n(prevGame.week)+' passing output.':'That represented a notable dip from the '+a+' passing yards he posted in Week '+n(prevGame.week)+'.';
+      if(Math.abs(attB-attA)>=8)return attB>attA?'His passing volume also climbed sharply from the previous week.':'His passing volume came down meaningfully from the previous week.';
+      return'His passing production has been fairly steady over the last two games.';
+    }
+    if(p.pos==='RB'){
+      const touchA=n(prevGame.carries)+n(prevGame.receptions),touchB=n(lastGame.carries)+n(lastGame.receptions);
+      if(Math.abs(touchB-touchA)>=5)return touchB>touchA?'His workload expanded noticeably from Week '+n(prevGame.week)+'.':'His workload pulled back from Week '+n(prevGame.week)+'.';
+      return'His overall touch volume has been fairly consistent recently.';
+    }
+    const ta=n(prevGame.targets),tb=n(lastGame.targets),ya=n(prevGame.receiving_yards),yb=n(lastGame.receiving_yards);
+    if(Math.abs(tb-ta)>=3)return tb>ta?'His target volume increased from Week '+n(prevGame.week)+', a positive sign for his role.':'His target volume fell from Week '+n(prevGame.week)+', something worth watching this week.';
+    if(Math.abs(yb-ya)>=45)return yb>ya?'He also produced a much bigger receiving day than he did in Week '+n(prevGame.week)+'.':'His yardage came back down after a stronger Week '+n(prevGame.week)+' performance.';
+    return'His receiving role has been relatively stable over the last two games.';
+  };
+  const matchupText=()=>{
+    const pv=n(positionVolFactor),pe=n(positionEffFactor);
+    let parts=[];
+    if(grade==='FAVORABLE')parts.push(m.opponent+' has been a favorable matchup for '+(p.pos==='QB'?'quarterbacks':p.pos==='RB'?'running backs':p.pos==='WR'?'wide receivers':'tight ends')+' so far');
+    else if(grade==='TOUGH')parts.push(m.opponent+' has been one of the tougher early-season matchups for '+(p.pos==='QB'?'quarterbacks':p.pos==='RB'?'running backs':p.pos==='WR'?'wide receivers':'tight ends'));
+    else parts.push(m.opponent+' has played close to league average against '+(p.pos==='QB'?'quarterbacks':p.pos==='RB'?'running backs':p.pos==='WR'?'wide receivers':'tight ends'));
+    if(pv>=1.06)parts.push('while allowing elevated opportunity to the position');
+    else if(pv<=.94)parts.push('while limiting opponent volume at the position');
+    if(pe>=1.06)parts.push('and above-average efficiency');
+    else if(pe<=.94)parts.push('and below-average efficiency');
+    return parts.join(' ')+'.';
+  };
+  const usageMove=p.role?.status==='SURGING'?'His role has also been trending upward.':p.role?.status==='DECLINING'?'His recent opportunity has slipped from his season-long level.':'His role has been relatively stable.';
+  const snapText=p.usage?.snapGames?(' He has played '+fmt1(p.usage.recentSnapPct)+'% of the offense\'s snaps recently'+(Math.abs(n(p.usage.snapTrend))>=4?(', '+(n(p.usage.snapTrend)>0?'up':'down')+' '+fmt1(Math.abs(n(p.usage.snapTrend)))+' percentage points from his broader sample'):'')+'.'):'';
+  const injuryText=()=>{
+    if(!p.injury)return'';
+    const status=String(p.injury.status||'').toLowerCase(),practice=String(p.injury.practice||'').toLowerCase(),detail=String(p.injury.detail||'').toLowerCase();
+    if(practice.includes('full'))return ' He appears on the injury report'+(detail?' with '+detail:'')+', but full practice participation is an encouraging sign for his availability.';
+    if(practice.includes('limited'))return ' He is dealing with '+(detail||'an injury')+' and was limited in practice, so his health and workload deserve monitoring.';
+    if(status.includes('questionable'))return ' He is listed as questionable'+(detail?' with '+detail:'')+', making his final status an important part of the projection.';
+    if(status.includes('out'))return ' He is currently listed out and should not be expected to play unless that designation changes.';
+    return ' He remains on the injury report'+(detail?' with '+detail:'')+'.';
+  };
+  const projectionSentence=()=>{
+    if(p.pos==='QB')return 'For Week '+nextWeek+', Gridiron Guru projects '+fmt1(projectedStats.passAttempts)+' pass attempts, '+fmt1(projectedStats.passYards)+' passing yards, '+fmt1(projectedStats.passTDs)+' passing touchdowns and '+fmt1(projectedStats.rushYards)+' rushing yards.';
+    if(p.pos==='RB')return 'For Week '+nextWeek+', the projection is '+fmt1(projectedStats.carries)+' carries for '+fmt1(projectedStats.rushYards)+' rushing yards, plus '+fmt1(projectedStats.receptions)+' catches for '+fmt1(projectedStats.recYards)+' receiving yards and '+fmt1((projectedStats.rushTDs||0)+(projectedStats.recTDs||0))+' total touchdowns.';
+    return 'For Week '+nextWeek+', the projection is '+fmt1(projectedStats.targets)+' targets, '+fmt1(projectedStats.receptions)+' receptions, '+fmt1(projectedStats.recYards)+' receiving yards and '+fmt1(projectedStats.recTDs)+' receiving touchdowns.';
+  };
+  let risk='';
+  if(p.pos==='QB')risk='The biggest swing factors are pass volume, game script and how well the offense handles '+m.opponent+'\'s pressure.';
+  else if(p.pos==='RB')risk='The biggest swing factors are backfield share, passing-game involvement and goal-line opportunities.';
+  else risk='The biggest swing factors are target share, catch efficiency and whether the game creates enough passing volume to support his ceiling.';
+  const firstPara=[gameLine(lastGame),trendSentence(),seasonSummary()].filter(Boolean).join(' ');
+  const secondPara=[usageMove+snapText,matchupText(),injuryText(),projectionSentence()].filter(Boolean).join(' ');
+  const sampleNote=p.games<4?' With only '+p.games+' current-season games in the sample, the model still blends in prior-season and league-level information rather than treating the early numbers as fully stable.':'';
+  p.analysis={title:'Week '+nextWeek+' Outlook',lead:firstPara,body:secondPara+sampleNote,risk,updated:'UPDATED FROM CURRENT WEEK ROLE, MATCHUP AND RECENT GAME DATA'};
+
 }
 const upcoming=slate.map(g=>({week:n(g.week),away:g.away_team,home:g.home_team,status:(g.away_score!==''&&g.home_score!==''?'FINAL':'UPCOMING'),start:g.gameday+' '+g.gametime,stadium:g.stadium,roof:g.roof,surface:g.surface,location:g.location,awayRest:n(g.away_rest),homeRest:n(g.home_rest),awayQb:g.away_qb_name||'',homeQb:g.home_qb_name||'',temp:g.temp!==''&&g.temp!=null?n(g.temp):null,wind:g.wind!==''&&g.wind!=null?n(g.wind):null,awayDefense:defenseProfiles[g.away_team]||null,homeDefense:defenseProfiles[g.home_team]||null,awayOffense:offenseProfiles[g.away_team]||null,homeOffense:offenseProfiles[g.home_team]||null,awayPositionDefense:defensePositionProfiles[g.away_team]||{},homePositionDefense:defensePositionProfiles[g.home_team]||{}}));
 // Walk-forward validation: each test week sees only earlier current-season games.
