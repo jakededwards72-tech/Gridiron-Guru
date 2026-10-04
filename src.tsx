@@ -159,8 +159,19 @@ function PlayerCard({p,week}:{p:P,week:number}){
         {m.rest?<span>{m.rest}d rest</span>:null}
       </div>
 
+      <details className="outlookDetails">
+        <summary><span><b>Expert outlook</b><small>Plain-English matchup analysis</small></span><i>＋</i></summary>
+        <div className="outlookBody">
+          <div className="outlookHeader"><span>WEEK {week} OUTLOOK</span><b>{p.analysis?.title||'Expert Analysis'}</b></div>
+          <p className="outlookLead">{p.analysis?.lead||'Projection analysis is being generated from the current matchup model.'}</p>
+          {p.analysis?.body&&<p>{p.analysis.body}</p>}
+          {p.analysis?.risk&&<div className="swingBox"><small>WHAT CAN SWING IT</small><p>{p.analysis.risk}</p></div>}
+          <small className="analysisStamp">{p.analysis?.updated||'MODEL-GENERATED FROM CURRENT WEEK INPUTS'}</small>
+        </div>
+      </details>
+
       <details className="analysisDetails">
-        <summary><span><b>Why this projection?</b><small>Role, matchup, usage and model inputs</small></span><i>＋</i></summary>
+        <summary><span><b>Model details</b><small>Role, matchup, usage and model inputs</small></span><i>＋</i></summary>
         <div className="analysisBody">
           <AnalysisSection title="Role & usage">
             <Audit label="Projected role" value={role}/>
