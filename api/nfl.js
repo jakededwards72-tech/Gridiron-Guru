@@ -146,13 +146,21 @@ for(const testWeek of scheduleWeeks.filter(w=>w>=2&&w<=maxWeek)){
    const share=(key,den)=>mean(rows.map(r=>{const z=tw[(r.recent_team||r.team)+'-'+n(r.week)]||{};return z[den]?n(r[key])/z[den]:0}));
    const curGames=rows.length,ew=clamp((6-curGames)/8,.15,.55),sh=(cur,pr,fb)=>cur*(1-ew)+(pr>0?pr:fb)*ew;
    const attempts=avg('attempts'),carries0=avg('carries'),targets0=avg('targets');
-   const ypa=sh(attempts?avg('passing_yards')/attempts:0,pavg('attempts')?pavg('passing_yards')/pavg('attempts'):0,7);
+   const trainQBs=train.filter(r=>(r.position_group||r.position)==='QB'&&n(r.attempts)>0),trainQBAtt=trainQBs.reduce((a,r)=>a+n(r.attempts),0),trainQBYds=trainQBs.reduce((a,r)=>a+n(r.passing_yards),0),trainLeagueYPA=trainQBAtt?trainQBYds/trainQBAtt:7;
+   const curAttTot=rows.reduce((a,r)=>a+n(r.attempts),0),curYTot=rows.reduce((a,r)=>a+n(r.passing_yards),0),priorAttTot=prior.reduce((a,r)=>a+n(r.attempts),0),priorYTot=prior.reduce((a,r)=>a+n(r.passing_yards),0);
+   const priorYPA=priorAttTot?clamp(priorYTot/priorAttTot,5.5,8.5):trainLeagueYPA,effPriorAtt=Math.min(priorAttTot*.35,100);
+   const ypa=(curYTot+effPriorAtt*priorYPA+120*trainLeagueYPA)/Math.max(1,curAttTot+effPriorAtt+120);
    const ypc=sh(carries0?avg('rushing_yards')/carries0:0,pavg('carries')?pavg('rushing_yards')/pavg('carries'):0,4.2);
    const ypt=sh(targets0?avg('receiving_yards')/targets0:0,pavg('targets')?pavg('receiving_yards')/pavg('targets'):0,7.5);
    const teamAtt=mean(trs.map(x=>x.att)),teamCar=mean(trs.map(x=>x.carries)),teamTgt=mean(trs.map(x=>x.targets));
    let projection=0;
-   if(pos==='QB')projection=teamAtt*share('attempts','att')*ypa;
-   else if(pos==='RB')projection=teamCar*share('carries','carries')*ypc;
+   if(pos==='QB'){
+     const shares=rows.map(r=>{const z=tw[(r.recent_team||r.team)+'-'+n(r.week)]||{};return{att:n(r.attempts),share:z.att?n(r.attempts)/z.att:0}}),latestShare=shares.at(-1)?.share||0;
+     const starts=shares.filter(x=>x.share>=.72&&x.att>=10).slice(-3).reverse(),w=[.55,.30,.15];let sn=0,sdn=0;starts.forEach((x,i)=>{sn+=x.att*w[i];sdn+=w[i]});
+     const priorStarts=prior.map(r=>n(r.attempts)).filter(x=>x>=20),starterBase=sdn?sn/sdn:priorStarts.length?mean(priorStarts):31,inferredStarter=latestShare>=.65;
+     const starterAtt=clamp(.65*starterBase+.35*teamAtt,20,44);
+     projection=(inferredStarter?starterAtt:teamAtt*share('attempts','att'))*ypa;
+   }else if(pos==='RB')projection=teamCar*share('carries','carries')*ypc;
    else projection=teamTgt*share('targets','targets')*ypt;
    const actualY=statFor(ar,pos),baseline=mean(rows.map(r=>statFor(r,pos)));
    if(!Number.isFinite(projection)||!Number.isFinite(actualY))continue;
@@ -160,5 +168,5 @@ for(const testWeek of scheduleWeeks.filter(w=>w>=2&&w<=maxWeek)){
  }
 }
 const metric=a=>{if(!a.length)return{n:0,mae:0,rmse:0,bias:0,baselineMae:0,improvement:0};const mae=mean(a.map(x=>Math.abs(x.error))),rmse=Math.sqrt(mean(a.map(x=>x.error*x.error))),bias=mean(a.map(x=>x.error)),bmae=mean(a.map(x=>Math.abs(x.baselineError)));return{n:a.length,mae:Number(mae.toFixed(1)),rmse:Number(rmse.toFixed(1)),bias:Number(bias.toFixed(1)),baselineMae:Number(bmae.toFixed(1)),improvement:Number((bmae?100*(bmae-mae)/bmae:0).toFixed(1))}};
-const validation={method:'walk-forward',weeks:scheduleWeeks.filter(w=>w>=2&&w<=maxWeek),overall:metric(validationRows),byPosition:Object.fromEntries(['QB','RB','WR','TE'].map(pos=>[pos,metric(validationRows.filter(x=>x.pos===pos))])),byWeek:Object.fromEntries(scheduleWeeks.filter(w=>w>=2&&w<=maxWeek).map(w=>[w,metric(validationRows.filter(x=>x.week===w))])),worst:[...validationRows].sort((a,b)=>Math.abs(b.error)-Math.abs(a.error)).slice(0,12).map(x=>({...x,projection:Number(x.projection.toFixed(1)),baseline:Number(x.baseline.toFixed(1)),error:Number(x.error.toFixed(1))}))};
+const validation={method:'walk-forward',version:'qb-calibrated-core-1.2',weeks:scheduleWeeks.filter(w=>w>=2&&w<=maxWeek),overall:metric(validationRows),byPosition:Object.fromEntries(['QB','RB','WR','TE'].map(pos=>[pos,metric(validationRows.filter(x=>x.pos===pos))])),byWeek:Object.fromEntries(scheduleWeeks.filter(w=>w>=2&&w<=maxWeek).map(w=>[w,metric(validationRows.filter(x=>x.week===w))])),worst:[...validationRows].sort((a,b)=>Math.abs(b.error)-Math.abs(a.error)).slice(0,12).map(x=>({...x,projection:Number(x.projection.toFixed(1)),baseline:Number(x.baseline.toFixed(1)),error:Number(x.error.toFixed(1))}))};
 res.setHeader('Cache-Control','s-maxage=1800, stale-while-revalidate=3600');res.status(200).json({source:'nflverse',season,asOf:new Date().toISOString(),throughWeek:maxWeek,projectionWeek:nextWeek,slateGames:slate.length,scheduleAsOf:todayET,playerCount:players.length,validation,league,offenseProfiles,defenseProfiles,pbpStatus:{connected:pbp.length>0,plays:pbp.length},players,upcoming})}catch(e){res.status(500).json({error:String(e.message||e)})}}
