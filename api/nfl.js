@@ -73,4 +73,40 @@ if(p.pos==='QB'){
 }
 const factor=p.pos==='RB'?rushEffFactor:passEffFactor;
 const base=p.pos==='QB'?p.passing.yds:p.pos==='RB'?p.rushing.yds:p.receiving.yds;
-p.matchup={projectionStatus:m.status==='FINAL'?'FINAL':'MATCHUP ADJUSTED',status:m.status,bye:false,opponent:m.opponent,home:m.home,venue:m.venue,weather:{status:(m.venue?.roof||'').toLowerCase().includes('dome')?'CONTROLLED':'NOT CONNECTED',wind:null,temp:null,precip:null},factor:Number(factor.toFixed(3)),grade:factor>=1.08?'FAVORABLE':factor<=.92?'TOUGH':'NEUTRAL',baseline:Number(base.toFixed(1)),contextYards:Number((base*factor).toFixed(1)),defense:m.defense,environment:{expectedPlays:Number(expectedPlays.toFixed(1)),passRate:Number((basePassRate*100).toFixed(1)),teamAttempts:Number(expectedAtt.toFixed(1)),teamCarries:Number(expectedCarries.toFixed(1)),teamTargets:Number(expectedTargets.toFixed(1)),playerVolume:Number(playerVolume.toFixed(1)),passVolumeFactor:Number(passVolFactor.toFixed(3)),rushVolumeFactor:Number(rushVolFactor.toFixed(3)),targetVolumeFactor:Number(targetVolFactor.toFixed(3)),efficiencyFactor:Number(factor.toFixed(3))},projection:Number(firstProjection.toFixed(1)),projectedStats}}const upcoming=slate.map(g=>({week:n(g.week),away:g.away_team,home:g.home_team,status:(g.away_score!==''&&g.home_score!==''?'FINAL':'UPCOMING'),start:g.gameday+' '+g.gametime,stadium:g.stadium,roof:g.roof,surface:g.surface,awayDefense:defenseProfiles[g.away_team]||null,homeDefense:defenseProfiles[g.home_team]||null}));res.setHeader('Cache-Control','s-maxage=1800, stale-while-revalidate=3600');res.status(200).json({source:'nflverse',season,asOf:new Date().toISOString(),throughWeek:maxWeek,projectionWeek:nextWeek,slateGames:slate.length,scheduleAsOf:todayET,playerCount:players.length,league,offenseProfiles,defenseProfiles,pbpStatus:{connected:pbp.length>0,plays:pbp.length},players,upcoming})}catch(e){res.status(500).json({error:String(e.message||e)})}}
+p.matchup={projectionStatus:m.status==='FINAL'?'FINAL':'MATCHUP ADJUSTED',status:m.status,bye:false,opponent:m.opponent,home:m.home,venue:m.venue,weather:{status:(m.venue?.roof||'').toLowerCase().includes('dome')?'CONTROLLED':'NOT CONNECTED',wind:null,temp:null,precip:null},factor:Number(factor.toFixed(3)),grade:factor>=1.08?'FAVORABLE':factor<=.92?'TOUGH':'NEUTRAL',baseline:Number(base.toFixed(1)),contextYards:Number((base*factor).toFixed(1)),defense:m.defense,environment:{expectedPlays:Number(expectedPlays.toFixed(1)),passRate:Number((basePassRate*100).toFixed(1)),teamAttempts:Number(expectedAtt.toFixed(1)),teamCarries:Number(expectedCarries.toFixed(1)),teamTargets:Number(expectedTargets.toFixed(1)),playerVolume:Number(playerVolume.toFixed(1)),passVolumeFactor:Number(passVolFactor.toFixed(3)),rushVolumeFactor:Number(rushVolFactor.toFixed(3)),targetVolumeFactor:Number(targetVolFactor.toFixed(3)),efficiencyFactor:Number(factor.toFixed(3))},projection:Number(firstProjection.toFixed(1)),projectedStats}}const upcoming=slate.map(g=>({week:n(g.week),away:g.away_team,home:g.home_team,status:(g.away_score!==''&&g.home_score!==''?'FINAL':'UPCOMING'),start:g.gameday+' '+g.gametime,stadium:g.stadium,roof:g.roof,surface:g.surface,awayDefense:defenseProfiles[g.away_team]||null,homeDefense:defenseProfiles[g.home_team]||null}));
+// Walk-forward validation: each test week sees only earlier current-season games.
+const validationRows=[];
+const statFor=(r,pos)=>pos==='QB'?n(r.passing_yards):pos==='RB'?n(r.rushing_yards):n(r.receiving_yards);
+const volFor=(r,pos)=>pos==='QB'?n(r.attempts):pos==='RB'?n(r.carries):n(r.targets);
+for(const testWeek of scheduleWeeks.filter(w=>w>=2&&w<=maxWeek)){
+ const train=csv(await st.clone().text()).filter(r=>n(r.season)===season&&n(r.week)<testWeek);
+ const actual=csv(await st.clone().text()).filter(r=>n(r.season)===season&&n(r.week)===testWeek);
+ const tw={};for(const r of train){const t=r.recent_team||r.team,k=t+'-'+n(r.week);tw[k]??={att:0,carries:0,targets:0};tw[k].att+=n(r.attempts);tw[k].carries+=n(r.carries);tw[k].targets+=n(r.targets)}
+ const teams={};for(const r of train){const t=r.recent_team||r.team,w=n(r.week),k=t+'-'+w;teams[k]??={team:t,att:0,carries:0,targets:0};teams[k].att+=n(r.attempts);teams[k].carries+=n(r.carries);teams[k].targets+=n(r.targets)}
+ const teamHist={};for(const x of Object.values(teams))(teamHist[x.team]??=[]).push(x);
+ const pBy={};for(const r of train){const id=r.player_id||r.player_name;if(id)(pBy[id]??=[]).push(r)}
+ const actualBy={};for(const r of actual){const id=r.player_id||r.player_name;if(id)actualBy[id]=r}
+ for(const [id,rows0] of Object.entries(pBy)){
+   const rows=[...rows0].sort((a,b)=>n(a.week)-n(b.week)),last=rows.at(-1),pos=last.position_group||last.position;
+   if(!['QB','RB','WR','TE'].includes(pos)||!actualBy[id])continue;
+   const ar=actualBy[id],team=last.recent_team||last.team,trs=teamHist[team]||[];if(!trs.length)continue;
+   const avg=k=>mean(rows.map(r=>n(r[k]))),prior=prevBy[id]||[],pavg=k=>mean(prior.map(r=>n(r[k])));
+   const share=(key,den)=>mean(rows.map(r=>{const z=tw[(r.recent_team||r.team)+'-'+n(r.week)]||{};return z[den]?n(r[key])/z[den]:0}));
+   const curGames=rows.length,ew=clamp((6-curGames)/8,.15,.55),sh=(cur,pr,fb)=>cur*(1-ew)+(pr>0?pr:fb)*ew;
+   const attempts=avg('attempts'),carries0=avg('carries'),targets0=avg('targets');
+   const ypa=sh(attempts?avg('passing_yards')/attempts:0,pavg('attempts')?pavg('passing_yards')/pavg('attempts'):0,7);
+   const ypc=sh(carries0?avg('rushing_yards')/carries0:0,pavg('carries')?pavg('rushing_yards')/pavg('carries'):0,4.2);
+   const ypt=sh(targets0?avg('receiving_yards')/targets0:0,pavg('targets')?pavg('receiving_yards')/pavg('targets'):0,7.5);
+   const teamAtt=mean(trs.map(x=>x.att)),teamCar=mean(trs.map(x=>x.carries)),teamTgt=mean(trs.map(x=>x.targets));
+   let projection=0;
+   if(pos==='QB')projection=teamAtt*share('attempts','att')*ypa;
+   else if(pos==='RB')projection=teamCar*share('carries','carries')*ypc;
+   else projection=teamTgt*share('targets','targets')*ypt;
+   const actualY=statFor(ar,pos),baseline=mean(rows.map(r=>statFor(r,pos)));
+   if(!Number.isFinite(projection)||!Number.isFinite(actualY))continue;
+   validationRows.push({week:testWeek,id,name:last.player_display_name||last.player_name,pos,team,projection,actual:actualY,baseline,error:projection-actualY,baselineError:baseline-actualY})
+ }
+}
+const metric=a=>{if(!a.length)return{n:0,mae:0,rmse:0,bias:0,baselineMae:0,improvement:0};const mae=mean(a.map(x=>Math.abs(x.error))),rmse=Math.sqrt(mean(a.map(x=>x.error*x.error))),bias=mean(a.map(x=>x.error)),bmae=mean(a.map(x=>Math.abs(x.baselineError)));return{n:a.length,mae:Number(mae.toFixed(1)),rmse:Number(rmse.toFixed(1)),bias:Number(bias.toFixed(1)),baselineMae:Number(bmae.toFixed(1)),improvement:Number((bmae?100*(bmae-mae)/bmae:0).toFixed(1))}};
+const validation={method:'walk-forward',weeks:scheduleWeeks.filter(w=>w>=2&&w<=maxWeek),overall:metric(validationRows),byPosition:Object.fromEntries(['QB','RB','WR','TE'].map(pos=>[pos,metric(validationRows.filter(x=>x.pos===pos))])),byWeek:Object.fromEntries(scheduleWeeks.filter(w=>w>=2&&w<=maxWeek).map(w=>[w,metric(validationRows.filter(x=>x.week===w))])),worst:[...validationRows].sort((a,b)=>Math.abs(b.error)-Math.abs(a.error)).slice(0,12).map(x=>({...x,projection:Number(x.projection.toFixed(1)),baseline:Number(x.baseline.toFixed(1)),error:Number(x.error.toFixed(1))}))};
+res.setHeader('Cache-Control','s-maxage=1800, stale-while-revalidate=3600');res.status(200).json({source:'nflverse',season,asOf:new Date().toISOString(),throughWeek:maxWeek,projectionWeek:nextWeek,slateGames:slate.length,scheduleAsOf:todayET,playerCount:players.length,validation,league,offenseProfiles,defenseProfiles,pbpStatus:{connected:pbp.length>0,plays:pbp.length},players,upcoming})}catch(e){res.status(500).json({error:String(e.message||e)})}}
