@@ -100,81 +100,76 @@ try{
 }catch(e){}
 const matchup={};
 for(const g of slate){
-  const isFinal=g.away_score!==''&&g.home_score!=='';
-  const status=isFinal?'FINAL':'UPCOMING';
-  matchup[g.away_team]={opponent:g.home_team,home:false,status,defense:defenseProfiles[g.home_team]||null,venue:{stadium:g.stadium||'',roof:g.roof||'',surface:g.surface||''}};
-  matchup[g.home_team]={opponent:g.away_team,home:true,status,defense:defenseProfiles[g.away_team]||null,venue:{stadium:g.stadium||'',roof:g.roof||'',surface:g.surface||''}};
-}for(const p of players){
+  const isFinal=g.away_score!==''&&g.home_score!=='',status=isFinal?'FINAL':'UPCOMING',roof=(g.roof||'').toLowerCase(),controlled=roof==='dome'||roof==='closed';
+  const temp=g.temp!==''&&g.temp!=null?n(g.temp):null,wind=g.wind!==''&&g.wind!=null?n(g.wind):null;
+  const weather={status:controlled?'CONTROLLED':(temp!=null||wind!=null?'SCHEDULE DATA':'NOT CONNECTED'),temp,wind,precip:null};
+  matchup[g.away_team]={opponent:g.home_team,home:false,status,defense:defenseProfiles[g.home_team]||null,positionDefense:defensePositionProfiles[g.home_team]||{},expectedQb:g.away_qb_name||'',opponentQb:g.home_qb_name||'',rest:n(g.away_rest),opponentRest:n(g.home_rest),neutral:g.location==='Neutral',weather,venue:{stadium:g.stadium||'',roof:g.roof||'',surface:g.surface||''}};
+  matchup[g.home_team]={opponent:g.away_team,home:true,status,defense:defenseProfiles[g.away_team]||null,positionDefense:defensePositionProfiles[g.away_team]||{},expectedQb:g.home_qb_name||'',opponentQb:g.away_qb_name||'',rest:n(g.home_rest),opponentRest:n(g.away_rest),neutral:g.location==='Neutral',weather,venue:{stadium:g.stadium||'',roof:g.roof||'',surface:g.surface||''}};
+}
+for(const p of players){
   const m=matchup[p.team];
   if(!m){
-    p.matchup={bye:true,status:'BYE',projectionStatus:'BYE',opponent:null,home:null,venue:{stadium:'',roof:'',surface:''},weather:{status:'N/A',wind:null,temp:null,precip:null},factor:1,grade:'BYE',baseline:0,contextYards:0,defense:null,environment:{expectedPlays:0,passRate:0,teamAttempts:0,teamCarries:0,playerVolume:0},projection:0,projectedStats:{}};
+    p.matchup={bye:true,status:'BYE',projectionStatus:'BYE',opponent:null,home:null,venue:{stadium:'',roof:'',surface:''},weather:{status:'N/A',wind:null,temp:null,precip:null},factor:1,grade:'BYE',baseline:0,contextYards:0,defense:null,positionDefense:null,environment:{expectedPlays:0,passRate:0,teamAttempts:0,teamCarries:0,teamTargets:0,playerVolume:0},projection:0,projectedStats:{}};
     continue
   }
-  const depth=depthByTeam[p.team]?.[norm(p.name)]||null;
+  const depth=depthByTeam[p.team]?.[norm(p.name)]||null,hasScheduleQb=!!m.expectedQb,scheduleStarter=p.pos==='QB'&&hasScheduleQb&&norm(m.expectedQb)===norm(p.name);
   const seasonAtt=(p.role.attemptShare||0)/100,recentAtt=(p.role.recentAttemptShare||p.role.attemptShare||0)/100,latestAtt=(p.role.latestAttemptShare||0)/100;
   const seasonCarry=(p.role.carryShare||0)/100,recentCarry=(p.role.recentCarryShare||p.role.carryShare||0)/100;
   const seasonTarget=(p.role.targetShare||0)/100,recentTarget=(p.role.recentTargetShare||p.role.targetShare||0)/100;
+  const snapRatio=p.usage?.snapPct>0?clamp((p.usage.recentSnapPct||p.usage.snapPct)/p.usage.snapPct,.8,1.2):1;
   let projectedAttemptShare=clamp(.7*recentAtt+.3*seasonAtt,0,1);
-  let projectedCarryShare=clamp(.7*recentCarry+.3*seasonCarry,0,.95);
-  let projectedTargetShare=clamp(.7*recentTarget+.3*seasonTarget,0,.65);
-  const depthStarter=p.pos==='QB'&&depth?.position==='QB'&&depth.rank===1;
-  const inferredStarter=p.pos==='QB'&&latestAtt>=.65;
-  if(depthStarter)projectedAttemptShare=clamp(Math.max(projectedAttemptShare,.96),.96,1);
-  else if(inferredStarter)projectedAttemptShare=clamp(Math.max(projectedAttemptShare,.92),.92,1);
-  const expectedRole=p.pos==='QB'?(depthStarter?'STARTING QB':inferredStarter?'STARTER-LEVEL QB':'QB ROTATION'):p.pos==='RB'?(projectedCarryShare>=.55?'LEAD BACK':projectedCarryShare>=.30?'COMMITTEE BACK':'ROTATION BACK'):(projectedTargetShare>=.25?'PRIMARY TARGET':projectedTargetShare>=.16?'FEATURED TARGET':'ROTATION TARGET');
-  p.role.expectedRole=expectedRole;p.role.projectedAttemptShare=Number((projectedAttemptShare*100).toFixed(1));p.role.projectedCarryShare=Number((projectedCarryShare*100).toFixed(1));p.role.projectedTargetShare=Number((projectedTargetShare*100).toFixed(1));p.role.depthRank=depth?.rank||null;p.role.roleSource=depthStarter?'ESPN DEPTH CHART':inferredStarter?'RECENT STARTER USAGE':'RECENCY + SEASON';
+  let projectedCarryShare=clamp((.7*recentCarry+.3*seasonCarry)*(.85+.15*snapRatio),0,.95);
+  let projectedTargetShare=clamp((.7*recentTarget+.3*seasonTarget)*(.85+.15*snapRatio),0,.65);
+  const depthStarter=p.pos==='QB'&&!hasScheduleQb&&depth?.position==='QB'&&depth.rank===1;
+  const inferredStarter=p.pos==='QB'&&!hasScheduleQb&&latestAtt>=.65;
+  if(scheduleStarter)projectedAttemptShare=.99;else if(depthStarter)projectedAttemptShare=clamp(Math.max(projectedAttemptShare,.96),.96,1);else if(inferredStarter)projectedAttemptShare=clamp(Math.max(projectedAttemptShare,.92),.92,1);
+  const expectedRole=p.pos==='QB'?(scheduleStarter?'STARTING QB':depthStarter?'STARTING QB':inferredStarter?'STARTER-LEVEL QB':'QB ROTATION'):p.pos==='RB'?(projectedCarryShare>=.55?'LEAD BACK':projectedCarryShare>=.30?'COMMITTEE BACK':'ROTATION BACK'):(projectedTargetShare>=.25?'PRIMARY TARGET':projectedTargetShare>=.16?'FEATURED TARGET':'ROTATION TARGET');
+  p.role.expectedRole=expectedRole;p.role.projectedAttemptShare=Number((projectedAttemptShare*100).toFixed(1));p.role.projectedCarryShare=Number((projectedCarryShare*100).toFixed(1));p.role.projectedTargetShare=Number((projectedTargetShare*100).toFixed(1));p.role.depthRank=depth?.rank||null;p.role.roleSource=scheduleStarter?'SCHEDULE STARTER':depthStarter?'ESPN DEPTH CHART':inferredStarter?'RECENT STARTER USAGE':'RECENCY + SNAP ROLE';
   if(p.injury?.week&&p.injury.week!==nextWeek)p.injury=null;
-  const off=offenseProfiles[p.team]||{},oppDef=m.defense||{};
-const expectedPlays=clamp(mean([off.plays||0,(oppDef.passAtt||0)+(oppDef.carries||0)]),50,72);
-const basePassRate=clamp(off.passRate||.55,.44,.68),oppPassRate=(oppDef.passAtt||0)+(oppDef.carries||0)?(oppDef.passAtt||0)/((oppDef.passAtt||0)+(oppDef.carries||0)):basePassRate;
-const expectedPassRate=clamp(.7*basePassRate+.3*oppPassRate,.42,.70);
-const passVolFactor=clamp((oppDef.passAtt||league.passAtt||1)/(league.passAtt||1),.9,1.1);
-const rushVolFactor=clamp((oppDef.carries||league.carries||1)/(league.carries||1),.9,1.1);
-const targetVolFactor=clamp((oppDef.targets||league.targets||1)/(league.targets||1),.9,1.1);
-const rawPassEffFactor=clamp(oppDef.passFactor||1,.9,1.1),rushEffFactor=clamp(oppDef.rushFactor||1,.9,1.1);
-const adv=oppDef.advanced;
-const epaFactor=adv?clamp(1+(adv.passEpa-leagueAdv.passEpa)*.35,.90,1.10):1;
-const successFactor=adv?clamp(1+(adv.successRate-leagueAdv.successRate)*.006,.94,1.06):1;
-const sackFactor=adv?clamp(1-(adv.sackRate-leagueAdv.sackRate)*.008,.94,1.06):1;
-const explosiveFactor=adv?clamp(1+(adv.explosiveRate-leagueAdv.explosiveRate)*.004,.96,1.04):1;
-const advancedPassFactor=adv?clamp(1+.45*(epaFactor-1)+.25*(successFactor-1)+.20*(sackFactor-1)+.10*(explosiveFactor-1),.91,1.09):rawPassEffFactor;
-const passEffFactor=clamp(.25*rawPassEffFactor+.75*advancedPassFactor,.91,1.09);
-const expectedAtt=clamp(expectedPlays*expectedPassRate*(.85+.15*passVolFactor),20,48);
-const expectedCarries=clamp(expectedPlays*(1-expectedPassRate)*(.85+.15*rushVolFactor),15,38);
-const teamTargetRate=off.attempts?clamp((off.targets||off.attempts)/off.attempts,.75,1.05):1;
-const expectedTargets=clamp(expectedAtt*teamTargetRate*(.9+.1*targetVolFactor),15,45);
-const attShare=projectedAttemptShare,carryShare=projectedCarryShare,targetShare=projectedTargetShare;
-let playerVolume=0,firstProjection=0,projectedStats={};
-if(p.pos==='QB'){
- const starterRole=depthStarter||inferredStarter;
- const roleAttempts=clamp(p.model.starterAttemptBase||31,20,42);
- const starterExpectedAtt=clamp(.65*roleAttempts+.35*expectedAtt,20,44);
- playerVolume=starterRole?starterExpectedAtt:expectedAtt*attShare;
- const qbMatchupEff=clamp(passEffFactor,.91,1.09);
- const passYards=playerVolume*p.model.passYPA*qbMatchupEff;
- const rushAttempts=p.advanced.secondary;
- const rushYards=p.passing.rush*(expectedPlays/(off.plays||expectedPlays));
- firstProjection=passYards;
- p.role.expectedStarterAttempts=Number(starterExpectedAtt.toFixed(1));
- projectedStats={passAttempts:Number(playerVolume.toFixed(1)),passYards:Number(passYards.toFixed(1)),rushAttempts:Number(rushAttempts.toFixed(1)),rushYards:Number(rushYards.toFixed(1)),calibratedYPA:Number(p.model.passYPA.toFixed(2)),matchupYPA:Number((p.model.passYPA*qbMatchupEff).toFixed(2))}
-}else if(p.pos==='RB'){
- const expCarries=expectedCarries*carryShare;
- const expTargets=expectedTargets*targetShare;
- const rushYards=expCarries*p.model.rushYPC*(.75+.25*rushEffFactor);
- const receptions=expTargets*(p.model.catchRate/100);
- const recYards=expTargets*p.model.recYPT*(.8+.2*passEffFactor);
- playerVolume=expCarries;firstProjection=rushYards;
- projectedStats={carries:Number(expCarries.toFixed(1)),rushYards:Number(rushYards.toFixed(1)),targets:Number(expTargets.toFixed(1)),receptions:Number(receptions.toFixed(1)),recYards:Number(recYards.toFixed(1))}
-}else{
- const expTargets=expectedTargets*targetShare;
- const receptions=expTargets*(p.model.catchRate/100);
- const recYards=expTargets*p.model.recYPT*(.8+.2*passEffFactor);
- playerVolume=expTargets;firstProjection=recYards;
- projectedStats={targets:Number(expTargets.toFixed(1)),receptions:Number(receptions.toFixed(1)),recYards:Number(recYards.toFixed(1))}
+  const outStatus=String(p.injury?.status||'').toLowerCase(),ruledOut=/\bout\b|inactive|injured reserve|\bir\b/.test(outStatus);
+  const off=offenseProfiles[p.team]||{},offAdv=off.advanced||{},oppDef=m.defense||{},adv=oppDef.advanced||{},posDef=m.positionDefense?.[p.pos]||{};
+  const offensePlays=offAdv.playsPerGame||off.plays||leagueOffAdv.playsPerGame||60,defensePlays=adv.playsPerGame||((oppDef.passAtt||0)+(oppDef.carries||0))||leagueOffAdv.playsPerGame||60;
+  const expectedPlays=clamp(.62*offensePlays+.38*defensePlays,50,75);
+  const basePassRate=clamp(off.passRate||.55,.40,.72),neutralPass=clamp((offAdv.neutralPassRate||basePassRate*100)/100,.35,.75),earlyPass=clamp((offAdv.earlyDownPassRate||basePassRate*100)/100,.35,.75),oppPassRate=clamp((adv.passRate||basePassRate*100)/100,.35,.75);
+  const expectedPassRate=clamp(.50*neutralPass+.25*earlyPass+.25*oppPassRate,.40,.72);
+  const passVolFactor=clamp((oppDef.passAtt||league.passAtt||1)/(league.passAtt||1),.90,1.10),rushVolFactor=clamp((oppDef.carries||league.carries||1)/(league.carries||1),.90,1.10),targetVolFactor=clamp((oppDef.targets||league.targets||1)/(league.targets||1),.90,1.10);
+  const rawPassEffFactor=clamp(oppDef.passFactor||1,.90,1.10),rawRushEffFactor=clamp(oppDef.rushFactor||1,.90,1.10);
+  const epaFactor=adv.passEpa!=null?clamp(1+(adv.passEpa-leagueAdv.passEpa)*.35,.90,1.10):1,successFactor=adv.successRate!=null?clamp(1+(adv.successRate-leagueAdv.successRate)*.006,.94,1.06):1,sackFactor=adv.sackRate!=null?clamp(1-(adv.sackRate-leagueAdv.sackRate)*.008,.94,1.06):1,hitFactor=adv.qbHitRate!=null?clamp(1-(adv.qbHitRate-leagueAdv.qbHitRate)*.004,.96,1.04):1,explosiveFactor=adv.explosiveRate!=null?clamp(1+(adv.explosiveRate-leagueAdv.explosiveRate)*.004,.96,1.04):1;
+  const advancedPassFactor=adv.passEpa!=null?clamp(1+.38*(epaFactor-1)+.22*(successFactor-1)+.18*(sackFactor-1)+.12*(hitFactor-1)+.10*(explosiveFactor-1),.90,1.10):rawPassEffFactor;
+  const passEffFactor=clamp(1+.20*(rawPassEffFactor-1)+.80*(advancedPassFactor-1),.90,1.10);
+  const rushEpaFactor=adv.rushEpa!=null?clamp(1+(adv.rushEpa-leagueAdv.rushEpa)*.30,.92,1.08):1,rushEffFactor=clamp(1+.35*(rawRushEffFactor-1)+.65*(rushEpaFactor-1),.90,1.10);
+  const expectedAtt=clamp(expectedPlays*expectedPassRate*(.88+.12*passVolFactor),20,49),expectedCarries=clamp(expectedPlays*(1-expectedPassRate)*(.88+.12*rushVolFactor),14,40);
+  const teamTargetRate=off.attempts?clamp((off.targets||off.attempts)/off.attempts,.75,1.05):1,expectedTargets=clamp(expectedAtt*teamTargetRate*(.92+.08*targetVolFactor),15,46);
+  const expectedPlayerSnaps=p.usage?.recentSnapPct>0?expectedPlays*(p.usage.recentSnapPct/100):null,snapWeight=expectedPlayerSnaps?clamp((p.usage.snapGames||0)*.09,0,.36):0;
+  const positionVolFactor=posDef.volumeFactor||1,positionEffFactor=posDef.efficiencyFactor||1,positionCatchFactor=posDef.catchFactor||1;
+  const receivingEffFactor=clamp(1+.58*(passEffFactor-1)+.42*(positionEffFactor-1),.88,1.12),rushingEffFactor=clamp(1+.58*(rushEffFactor-1)+.42*((p.pos==='RB'?positionEffFactor:1)-1),.88,1.12);
+  const offRz=offAdv.redZoneSuccessRate||leagueOffAdv.redZoneSuccessRate||50,defRz=adv.redZoneSuccessRate||leagueAdv.redZoneSuccessRate||50,tdEnvFactor=clamp(1+(offRz-(leagueOffAdv.redZoneSuccessRate||50))*.0025+(defRz-(leagueAdv.redZoneSuccessRate||50))*.0025,.88,1.12);
+  let playerVolume=0,firstProjection=0,projectedStats={};
+  if(ruledOut){
+    p.role.expectedRole='OUT';p.role.roleSource='INJURY REPORT';projectedStats=p.pos==='QB'?{passAttempts:0,passYards:0,passTDs:0,rushAttempts:0,rushYards:0,rushTDs:0}:p.pos==='RB'?{carries:0,rushYards:0,rushTDs:0,targets:0,receptions:0,recYards:0,recTDs:0}:{targets:0,receptions:0,recYards:0,recTDs:0};playerVolume=0;firstProjection=0;
+  }else if(p.pos==='QB'){
+    const starterRole=scheduleStarter||depthStarter||inferredStarter,roleAttempts=clamp(p.model.starterAttemptBase||31,20,43),starterExpectedAtt=clamp(.62*roleAttempts+.38*expectedAtt,20,45);
+    playerVolume=starterRole?starterExpectedAtt:expectedAtt*projectedAttemptShare;
+    const qbPosFactor=posDef.efficiencyFactor||1,qbMatchupEff=clamp(1+.75*(passEffFactor-1)+.25*(qbPosFactor-1),.89,1.11),passYards=playerVolume*p.model.passYPA*qbMatchupEff;
+    const snapRush=expectedPlayerSnaps?p.usage.carriesPerSnap*expectedPlayerSnaps:p.rushing.att,rushAttempts=clamp(.65*(p.rushing.att||p.advanced.secondary)+.35*snapRush,0,16),rushYards=rushAttempts*p.model.rushYPC*clamp(.85+.15*rushEffFactor,.94,1.06);
+    const posTdFactor=clamp((posDef.passTDRate||leaguePos.QB.passTDRate||p.model.passTDRate)/(leaguePos.QB.passTDRate||p.model.passTDRate||.04),.80,1.20),passTDs=playerVolume*p.model.passTDRate*tdEnvFactor*(.72+.28*posTdFactor),rushTDs=rushAttempts*p.model.rushTDRate*tdEnvFactor;
+    firstProjection=passYards;p.role.expectedStarterAttempts=Number(starterExpectedAtt.toFixed(1));
+    projectedStats={passAttempts:Number(playerVolume.toFixed(1)),passYards:Number(passYards.toFixed(1)),passTDs:Number(passTDs.toFixed(2)),rushAttempts:Number(rushAttempts.toFixed(1)),rushYards:Number(rushYards.toFixed(1)),rushTDs:Number(rushTDs.toFixed(2)),calibratedYPA:Number(p.model.passYPA.toFixed(2)),matchupYPA:Number((p.model.passYPA*qbMatchupEff).toFixed(2))};
+  }else if(p.pos==='RB'){
+    const shareCarries=expectedCarries*projectedCarryShare*(.88+.12*positionVolFactor),snapCarries=expectedPlayerSnaps?p.usage.carriesPerSnap*expectedPlayerSnaps:shareCarries,expCarries=(1-snapWeight)*shareCarries+snapWeight*snapCarries;
+    const shareTargets=expectedTargets*projectedTargetShare*(.90+.10*positionVolFactor),snapTargets=expectedPlayerSnaps?p.usage.targetsPerSnap*expectedPlayerSnaps:shareTargets,expTargets=(1-snapWeight)*shareTargets+snapWeight*snapTargets;
+    const rushYards=expCarries*p.model.rushYPC*rushingEffFactor,catchRate=clamp((p.model.catchRate/100)*(1+.35*(positionCatchFactor-1)),.35,.92),receptions=expTargets*catchRate,recYards=expTargets*p.model.recYPT*receivingEffFactor;
+    const rushTdFactor=clamp((posDef.rushTDRate||leaguePos.RB.rushTDRate||p.model.rushTDRate)/(leaguePos.RB.rushTDRate||p.model.rushTDRate||.025),.80,1.20),recTdFactor=clamp((posDef.recTDRate||leaguePos.RB.recTDRate||p.model.recTDRate)/(leaguePos.RB.recTDRate||p.model.recTDRate||.03),.80,1.20),rushTDs=expCarries*p.model.rushTDRate*tdEnvFactor*(.75+.25*rushTdFactor),recTDs=expTargets*p.model.recTDRate*tdEnvFactor*(.75+.25*recTdFactor);
+    playerVolume=expCarries;firstProjection=rushYards;projectedStats={carries:Number(expCarries.toFixed(1)),rushYards:Number(rushYards.toFixed(1)),rushTDs:Number(rushTDs.toFixed(2)),targets:Number(expTargets.toFixed(1)),receptions:Number(receptions.toFixed(1)),recYards:Number(recYards.toFixed(1)),recTDs:Number(recTDs.toFixed(2))};
+  }else{
+    const shareTargets=expectedTargets*projectedTargetShare*(.90+.10*positionVolFactor),snapTargets=expectedPlayerSnaps?p.usage.targetsPerSnap*expectedPlayerSnaps:shareTargets,expTargets=(1-snapWeight)*shareTargets+snapWeight*snapTargets;
+    const catchRate=clamp((p.model.catchRate/100)*(1+.35*(positionCatchFactor-1)),.30,.92),receptions=expTargets*catchRate,recYards=expTargets*p.model.recYPT*receivingEffFactor,recTdFactor=clamp((posDef.recTDRate||leaguePos[p.pos]?.recTDRate||p.model.recTDRate)/(leaguePos[p.pos]?.recTDRate||p.model.recTDRate||.045),.80,1.20),recTDs=expTargets*p.model.recTDRate*tdEnvFactor*(.75+.25*recTdFactor);
+    playerVolume=expTargets;firstProjection=recYards;projectedStats={targets:Number(expTargets.toFixed(1)),receptions:Number(receptions.toFixed(1)),recYards:Number(recYards.toFixed(1)),recTDs:Number(recTDs.toFixed(2))};
+  }
+  const factor=p.pos==='RB'?rushingEffFactor:receivingEffFactor,base=p.pos==='QB'?p.passing.yds:p.pos==='RB'?p.rushing.yds:p.receiving.yds,grade=factor>=1.05?'FAVORABLE':factor<=.95?'TOUGH':'NEUTRAL';
+  p.matchup={projectionStatus:m.status==='FINAL'?'FINAL':'MATCHUP ADJUSTED',status:m.status,bye:false,opponent:m.opponent,home:m.home,rest:m.rest,opponentRest:m.opponentRest,neutral:m.neutral,expectedQb:m.expectedQb,opponentQb:m.opponentQb,venue:m.venue,weather:m.weather,factor:Number(factor.toFixed(3)),grade,baseline:Number(base.toFixed(1)),contextYards:Number((base*factor).toFixed(1)),defense:m.defense,positionDefense:posDef,intelligence:{offenseAdvanced:offAdv,snapWeight:Number(snapWeight.toFixed(3)),expectedPlayerSnaps:expectedPlayerSnaps?Number(expectedPlayerSnaps.toFixed(1)):null,positionVolumeFactor:Number(positionVolFactor.toFixed(3)),positionEfficiencyFactor:Number(positionEffFactor.toFixed(3)),positionCatchFactor:Number(positionCatchFactor.toFixed(3)),receivingEfficiencyFactor:Number(receivingEffFactor.toFixed(3)),rushingEfficiencyFactor:Number(rushingEffFactor.toFixed(3)),tdEnvironmentFactor:Number(tdEnvFactor.toFixed(3))},environment:{expectedPlays:Number(expectedPlays.toFixed(1)),passRate:Number((expectedPassRate*100).toFixed(1)),teamAttempts:Number(expectedAtt.toFixed(1)),teamCarries:Number(expectedCarries.toFixed(1)),teamTargets:Number(expectedTargets.toFixed(1)),playerVolume:Number(playerVolume.toFixed(1)),passVolumeFactor:Number(passVolFactor.toFixed(3)),rushVolumeFactor:Number(rushVolFactor.toFixed(3)),targetVolumeFactor:Number(targetVolFactor.toFixed(3)),efficiencyFactor:Number(factor.toFixed(3)),rawPassFactor:Number(rawPassEffFactor.toFixed(3)),advancedPassFactor:Number(advancedPassFactor.toFixed(3))},projection:Number(firstProjection.toFixed(1)),projectedStats};
 }
-const factor=p.pos==='RB'?rushEffFactor:passEffFactor;
-const base=p.pos==='QB'?p.passing.yds:p.pos==='RB'?p.rushing.yds:p.receiving.yds;
-p.matchup={projectionStatus:m.status==='FINAL'?'FINAL':'MATCHUP ADJUSTED',status:m.status,bye:false,opponent:m.opponent,home:m.home,venue:m.venue,weather:{status:(m.venue?.roof||'').toLowerCase().includes('dome')?'CONTROLLED':'NOT CONNECTED',wind:null,temp:null,precip:null},factor:Number(factor.toFixed(3)),grade:factor>=1.05?'FAVORABLE':factor<=.95?'TOUGH':'NEUTRAL',baseline:Number(base.toFixed(1)),contextYards:Number((base*factor).toFixed(1)),defense:m.defense,environment:{expectedPlays:Number(expectedPlays.toFixed(1)),passRate:Number((expectedPassRate*100).toFixed(1)),teamAttempts:Number(expectedAtt.toFixed(1)),teamCarries:Number(expectedCarries.toFixed(1)),teamTargets:Number(expectedTargets.toFixed(1)),playerVolume:Number(playerVolume.toFixed(1)),passVolumeFactor:Number(passVolFactor.toFixed(3)),rushVolumeFactor:Number(rushVolFactor.toFixed(3)),targetVolumeFactor:Number(targetVolFactor.toFixed(3)),efficiencyFactor:Number(factor.toFixed(3)),rawPassFactor:Number(rawPassEffFactor.toFixed(3)),advancedPassFactor:Number(advancedPassFactor.toFixed(3))},projection:Number(firstProjection.toFixed(1)),projectedStats}}const upcoming=slate.map(g=>({week:n(g.week),away:g.away_team,home:g.home_team,status:(g.away_score!==''&&g.home_score!==''?'FINAL':'UPCOMING'),start:g.gameday+' '+g.gametime,stadium:g.stadium,roof:g.roof,surface:g.surface,awayDefense:defenseProfiles[g.away_team]||null,homeDefense:defenseProfiles[g.home_team]||null}));
+const upcoming=slate.map(g=>({week:n(g.week),away:g.away_team,home:g.home_team,status:(g.away_score!==''&&g.home_score!==''?'FINAL':'UPCOMING'),start:g.gameday+' '+g.gametime,stadium:g.stadium,roof:g.roof,surface:g.surface,awayDefense:defenseProfiles[g.away_team]||null,homeDefense:defenseProfiles[g.home_team]||null}));
 // Walk-forward validation: each test week sees only earlier current-season games.
 const validationRows=[];
 const statFor=(r,pos)=>pos==='QB'?n(r.passing_yards):pos==='RB'?n(r.rushing_yards):n(r.receiving_yards);
