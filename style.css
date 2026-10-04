@@ -442,3 +442,66 @@ main{max-width:920px;margin:0 auto;padding:14px 16px 50px}
   .chips{max-width:52%}
   .chip{font-size:6px}
 }
+
+.outlookDetails{
+  margin:10px -2px 0;
+  border-top:1px solid #1d2923;
+}
+.outlookDetails summary{
+  list-style:none;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:12px 2px 2px;
+  cursor:pointer;
+}
+.outlookDetails summary::-webkit-details-marker{display:none}
+.outlookDetails summary span b,.outlookDetails summary span small{display:block}
+.outlookDetails summary span b{font-size:11px;color:#f0f5f2}
+.outlookDetails summary span small{margin-top:2px;font-size:8px;color:#6f7e76}
+.outlookDetails summary i{font-style:normal;color:#64e593;font-size:18px;transition:transform .18s ease}
+.outlookDetails[open] summary i{transform:rotate(45deg)}
+.outlookBody{
+  margin-top:10px;
+  padding:13px;
+  border:1px solid #22342a;
+  border-radius:12px;
+  background:linear-gradient(145deg,#0c1712,#0a100e);
+}
+.outlookHeader span,.outlookHeader b{display:block}
+.outlookHeader span{font-size:7px;font-weight:900;letter-spacing:.8px;color:#5edb8c}
+.outlookHeader b{margin-top:3px;font-size:15px}
+.outlookBody p{
+  margin:9px 0 0;
+  color:#aebbb4;
+  font-size:10.5px;
+  line-height:1.55;
+}
+.outlookBody .outlookLead{
+  color:#e1e9e4;
+  font-size:11px;
+  line-height:1.55;
+}
+.swingBox{
+  margin-top:11px;
+  padding:10px;
+  border-radius:10px;
+  border:1px solid #284131;
+  background:#0a1510;
+}
+.swingBox small{display:block;font-size:7px;font-weight:900;letter-spacing:.7px;color:#69e596}
+.swingBox p{margin-top:4px;font-size:9.5px;color:#94a39b}
+.analysisStamp{
+  display:block;
+  margin-top:10px;
+  font-size:6.5px;
+  letter-spacing:.5px;
+  color:#58675f;
+}
+@media(max-width:700px){
+  .outlookDetails{margin-top:8px}
+  .outlookBody{padding:11px}
+  .outlookHeader b{font-size:14px}
+  .outlookBody p,.outlookBody .outlookLead{font-size:10px}
+}
