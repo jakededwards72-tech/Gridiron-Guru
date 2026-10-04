@@ -1,14 +1,263 @@
-import React,{useEffect,useMemo,useState}from'react';import{createRoot}from'react-dom/client';import'./style.css';
-type P=any;type VMetric={n:number,mae:number,rmse:number,bias:number,baselineMae:number,improvement:number};type D=any;
-const f=(x:number)=>Number.isFinite(x)?x.toFixed(1):'—';
-function App(){const[tab,setTab]=useState('Player Lab'),[data,setData]=useState<D|null>(null),[err,setErr]=useState(''),[q,setQ]=useState(''),[pos,setPos]=useState('ALL'),[pick,setPick]=useState<P|null>(null);
-useEffect(()=>{fetch('/api/nfl',{cache:'no-store'}).then(r=>r.json()).then(x=>x.error?setErr(x.error):setData(x)).catch(e=>setErr(String(e)))},[]);
-const players=useMemo(()=>data?.players.filter(p=>(pos==='ALL'||p.pos===pos)&&p.name.toLowerCase().includes(q.toLowerCase())).slice(0,60)||[],[data,q,pos]);const allPlayers=data?.players||[];
-return <><header><div><b>GRIDIRON <i>GURU</i></b><small>NFL PREDICTION INTELLIGENCE</small></div><span>MATCHUP INTELLIGENCE 2.0</span></header><nav>{['Projections','Player Lab','Games','Validation','Model'].map(x=><button className={tab===x?'on':''} onClick={()=>setTab(x)}>{x}</button>)}</nav><main>
-{tab==='Player Lab'&&<><section className="hero"><small>LIVE PLAYER INTELLIGENCE</small><h1>Predict the game from the inside out.</h1><p>Gridiron Guru builds independent Week {data?.projectionWeek??'—'} forecasts from projected role, live snap participation, team play environment, position-specific opponent tendencies, player efficiency, injuries and matchup context. Sportsbook information is not part of the prediction process.</p><div className="metrics"><div><strong>{data?.playerCount??'—'}</strong><small>SKILL PLAYERS</small></div><div><strong>{data?'W'+data.throughWeek:'—'}</strong><small>DATA THROUGH</small></div><div><strong>0</strong><small>BETTING INPUTS</small></div></div></section>{err&&<p className="error">Data feed error: {err}</p>}<div className="filters"><input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search player…"/>{['ALL','QB','RB','WR','TE'].map(x=><button className={pos===x?'on':''} onClick={()=>setPos(x)}>{x}</button>)}</div><h2>Player Profiles</h2>{!data&& !err&&<p>Loading nflverse player data…</p>}{players.map(p=><article onClick={()=>setPick(p)}><div className="who"><b>{p.name}</b><small>{p.pos} · {p.team} · {p.games} games in sample</small></div><div className={'role '+p.role.status.toLowerCase()}>{p.role.status} <b>{p.role.delta>0?'+':''}{f(p.role.delta)}%</b> recent opportunity</div><div className="grid">{p.pos==='QB'?<><Stat k="ATT/G" v={f(p.passing.att)}/><Stat k="PASS YDS/G" v={f(p.passing.yds)}/><Stat k="RUSH YDS/G" v={f(p.passing.rush)}/></>:p.pos==='RB'?<><Stat k="CARRIES/G" v={f(p.rushing.att)}/><Stat k="RUSH YDS/G" v={f(p.rushing.yds)}/><Stat k="TARGETS/G" v={f(p.receiving.targets)}/></>:<><Stat k="TARGETS/G" v={f(p.receiving.targets)}/><Stat k="REC/G" v={f(p.receiving.rec)}/><Stat k="REC YDS/G" v={f(p.receiving.yds)}/></>}</div><div className="grid intel"><Stat k={p.pos==='QB'?'TEAM ATT SHARE':p.pos==='RB'?'CARRY SHARE':'TARGET SHARE'} v={f(p.role.share)+'%'}/><Stat k="ROLE BASE" v={f(p.role.baseline)}/><Stat k="LAST 2" v={f(p.role.recent)}/><Stat k="VOLATILITY" v={p.role.volatility}/><Stat k="ROLE CONF" v={p.role.confidence+'/100'}/></div><div className="profile"><span><small>BLENDED {p.advanced.primary.toUpperCase()}</small><b>{f(p.advanced.volume)}</b></span><span><small>{p.pos==='QB'?'RUSH WORK':p.pos==='RB'?'BLENDED TARGETS':'AIR YDS/G'}</small><b>{f(p.advanced.secondary)}</b></span><span><small>{p.pos==='QB'?'YDS / ATT':p.pos==='RB'?'YDS / CARRY':'YDS / TARGET'}</small><b>{f(p.advanced.efficiency)}</b></span>{p.advanced.catchRate!=null&&<span><small>CATCH RATE</small><b>{f(p.advanced.catchRate)}%</b></span>}<span><small>2025 PRIOR</small><b>{p.role.priorGames?p.role.priorWeight+'%':'NONE'}</b></span></div><div className="roleForecast"><span><small>PROJECTED ROLE</small><b>{p.role.expectedRole||'ROLE PENDING'}</b></span><span><small>{p.pos==='QB'?'EXPECTED ATT SHARE':p.pos==='RB'?'EXPECTED CARRY SHARE':'EXPECTED TARGET SHARE'}</small><b>{f(p.pos==='QB'?p.role.projectedAttemptShare||0:p.pos==='RB'?p.role.projectedCarryShare||0:p.role.projectedTargetShare||0)}%</b></span><span><small>ROLE SOURCE</small><b>{p.role.roleSource||'HISTORICAL USAGE'}</b></span></div>{p.usage&&<div className="usageIntel"><span><small>SNAP SHARE</small><b>{p.usage.snapGames?f(p.usage.recentSnapPct)+'%':'PENDING'}</b></span><span><small>SNAP TREND</small><b>{p.usage.snapGames?(p.usage.snapTrend>0?'+':'')+f(p.usage.snapTrend)+'%':'—'}</b></span><span><small>{p.pos==='QB'?'ATT / SNAP':p.pos==='RB'?'CARRY / SNAP':'TARGET / SNAP'}</small><b>{f(p.pos==='QB'?p.usage.attemptsPerSnap:p.pos==='RB'?p.usage.carriesPerSnap:p.usage.targetsPerSnap)}</b></span><span><small>ADV DATA</small><b>{p.tracking?.pfrPass||p.tracking?.pfrRush||p.tracking?.pfrRec?'CONNECTED':'BOX + PBP'}</b></span></div>}{p.pos==='QB'&&<div className="qbAudit"><span><small>STARTER ATT BASE</small><b>{f(p.model.starterAttemptBase||0)}</b></span><span><small>PROJECTED ATT</small><b>{f(p.role.expectedStarterAttempts||p.matchup?.projectedStats?.passAttempts||0)}</b></span><span><small>CALIBRATED Y/A</small><b>{f(p.matchup?.projectedStats?.calibratedYPA||p.model.passYPA)}</b></span><span><small>MATCHUP Y/A</small><b>{f(p.matchup?.projectedStats?.matchupYPA||p.model.passYPA)}</b></span></div>}{p.matchup?.bye?<div className="byeCard"><b>WEEK {data?.projectionWeek} · BYE</b><span>No game is scheduled for {p.team} this week.</span></div>:p.matchup?.status==='FINAL'?<div className="byeCard"><b>WEEK {data?.projectionWeek} · FINAL vs {p.matchup.opponent}</b><span>This game has already been played. It is not treated as an upcoming projection.</span></div>:p.matchup&&<><div className={'forecast '+(p.matchup.projectionStatus==='MATCHUP ADJUSTED'?'':'baselineForecast')}><div><small>WEEK {data?.projectionWeek} PROJECTION · {p.matchup.projectionStatus==='MATCHUP ADJUSTED'?`vs ${p.matchup.opponent}`:'BASELINE'}</small><b>{p.name}</b></div>{p.injury&&<div className="injury"><b>INJURY: {p.injury.status}</b><span>{[p.injury.detail,p.injury.practice].filter(Boolean).join(' · ')||'Official injury report listing'}</span></div>}<div className="forecaststats">{p.pos==='QB'?<><span><strong>{f(p.matchup.projectedStats.passYards)}</strong><small>PASS YDS</small></span><span><strong>{f(p.matchup.projectedStats.passAttempts)}</strong><small>PASS ATT</small></span><span><strong>{f(p.matchup.projectedStats.passTDs)}</strong><small>PASS TD</small></span><span><strong>{f(p.matchup.projectedStats.rushYards)}</strong><small>RUSH YDS</small></span></>:p.pos==='RB'?<><span><strong>{f(p.matchup.projectedStats.rushYards)}</strong><small>RUSH YDS</small></span><span><strong>{f(p.matchup.projectedStats.carries)}</strong><small>CARRIES</small></span><span><strong>{f(p.matchup.projectedStats.rushTDs)}</strong><small>RUSH TD</small></span><span><strong>{f(p.matchup.projectedStats.recYards)}</strong><small>REC YDS</small></span><span><strong>{f(p.matchup.projectedStats.receptions)}</strong><small>REC</small></span><span><strong>{f(p.matchup.projectedStats.recTDs)}</strong><small>REC TD</small></span></>:<><span><strong>{f(p.matchup.projectedStats.recYards)}</strong><small>REC YDS</small></span><span><strong>{f(p.matchup.projectedStats.receptions)}</strong><small>REC</small></span><span><strong>{f(p.matchup.projectedStats.targets)}</strong><small>TARGETS</small></span><span><strong>{f(p.matchup.projectedStats.recTDs)}</strong><small>REC TD</small></span></>}</div></div>{p.matchup.projectionStatus==='MATCHUP ADJUSTED'&&<div className="context"><span><small>VENUE</small><b>{p.matchup.venue.roof||'UNKNOWN'} · {p.matchup.venue.surface||'surface n/a'}</b></span><span><small>WEATHER</small><b>{p.matchup.weather.status}{p.matchup.weather.temp!=null?' · '+f(p.matchup.weather.temp)+'°':''}{p.matchup.weather.wind!=null?' · '+f(p.matchup.weather.wind)+' mph':''}</b></span><span><small>LOCATION / REST</small><b>{p.matchup.neutral?'NEUTRAL':p.matchup.home?'HOME':'AWAY'} · {p.matchup.rest||'—'}d</b></span></div>}{p.matchup.projectionStatus==='MATCHUP ADJUSTED'&&<div className={'matchup '+p.matchup.grade.toLowerCase()}><b>WEEK {data?.projectionWeek} vs {p.matchup.opponent} · {p.matchup.grade}</b><span>Opponent factor {f(p.matchup.factor)}×{p.matchup.defense?.advanced?` · EPA/play ${f(p.matchup.defense.advanced.epaPerPlay)} · success ${f(p.matchup.defense.advanced.successRate)}% · sack ${f(p.matchup.defense.advanced.sackRate)}% · explosive ${f(p.matchup.defense.advanced.explosiveRate)}%${p.pos==='QB'&&p.matchup.environment.advancedPassFactor?` · QB eff ${f(p.matchup.environment.advancedPassFactor)}×`:''}`:''}</span></div>}{p.matchup.projectionStatus==='MATCHUP ADJUSTED'&&<div className="deepIntel"><span><small>EXP PLAYER SNAPS</small><b>{f(p.matchup.intelligence?.expectedPlayerSnaps)}</b></span><span><small>POS VOLUME</small><b>{f(p.matchup.intelligence?.positionVolumeFactor)}×</b></span><span><small>POS EFF</small><b>{f(p.matchup.intelligence?.positionEfficiencyFactor)}×</b></span><span><small>TD ENV</small><b>{f(p.matchup.intelligence?.tdEnvironmentFactor)}×</b></span><span><small>NEUTRAL PASS</small><b>{f(p.matchup.intelligence?.offenseAdvanced?.neutralPassRate)}%</b></span><span><small>RED ZONE SUCCESS</small><b>{f(p.matchup.intelligence?.offenseAdvanced?.redZoneSuccessRate)}%</b></span></div>}<div className="sim"><Stat k="EXP TEAM PLAYS" v={f(p.matchup.environment.expectedPlays)}/><Stat k="PASS RATE" v={f(p.matchup.environment.passRate)+'%'}/><Stat k={p.pos==='QB'?'EXP TEAM ATT':p.pos==='RB'?'EXP TEAM CARRIES':'EXP TEAM TARGETS'} v={f(p.pos==='QB'?p.matchup.environment.teamAttempts:p.pos==='RB'?p.matchup.environment.teamCarries:p.matchup.environment.teamTargets)}/><Stat k="EXP PLAYER VOL" v={f(p.matchup.environment.playerVolume)}/><Stat k="MODEL YARD CORE" v={f(p.matchup.projection)}/></div></>}<details open={pick?.id===p.id}><summary>Recent game evidence</summary><div className="trend">{p.trend.map(g=><span>W{g.week}<b>{p.pos==='QB'?g.pass:p.pos==='RB'?g.rush:g.rec}</b><small>{p.pos==='QB'?'pass yds':p.pos==='RB'?'rush yds':'rec yds'}</small></span>)}</div><p className="warn">Projection flow: current role and snap participation → team play/pass environment → expected player opportunity → shrunk player efficiency → position-specific defense + play-by-play efficiency → touchdown environment. Injury reports and schedule context are attached before projection. True live route participation and live forecast weather remain explicit data gaps; sportsbook prices are excluded.</p></details></article>)}</>}
-{tab==='Games'&&<><Info title="Game Environment" text={`Week ${data?.projectionWeek??"—"} matchup intelligence combines expected starters, rest, venue, team pace/pass tendencies, red-zone profile and opponent play-by-play defense before player opportunity is allocated.`}/>{data?.upcoming.map(g=><article className="gameCard"><b>Week {g.week}: {g.away} @ {g.home}</b><p>{g.start} · {g.stadium||'venue pending'} · {g.roof||'roof n/a'} · {g.surface||'surface n/a'}</p><div className="gameMeta"><span><small>EXPECTED QBS</small><b>{g.awayQb||'TBD'} / {g.homeQb||'TBD'}</b></span><span><small>REST</small><b>{g.away} {g.awayRest||'—'}d · {g.home} {g.homeRest||'—'}d</b></span><span><small>WEATHER DATA</small><b>{g.roof==='dome'||g.roof==='closed'?'CONTROLLED':g.temp!=null||g.wind!=null?`${g.temp??'—'}° · ${g.wind??'—'} mph`:'PENDING'}</b></span></div><div className="gameintel"><span>{g.away} OFF<br/><b>{g.awayOffense?.advanced?f(g.awayOffense.advanced.playsPerGame)+' plays · '+f(g.awayOffense.advanced.neutralPassRate)+'% neutral pass':'—'}</b></span><span>{g.home} OFF<br/><b>{g.homeOffense?.advanced?f(g.homeOffense.advanced.playsPerGame)+' plays · '+f(g.homeOffense.advanced.neutralPassRate)+'% neutral pass':'—'}</b></span><span>{g.away} DEF<br/><b>{g.awayDefense?.advanced?'EPA '+f(g.awayDefense.advanced.epaPerPlay)+' · sack '+f(g.awayDefense.advanced.sackRate)+'%':'—'}</b></span><span>{g.home} DEF<br/><b>{g.homeDefense?.advanced?'EPA '+f(g.homeDefense.advanced.epaPerPlay)+' · sack '+f(g.homeDefense.advanced.sackRate)+'%':'—'}</b></span></div></article>)}</>}
-{tab==='Projections'&&<><Info title={`Week ${data?.projectionWeek??"—"} Forecast Board`} text="Independent player forecasts generated without betting lines. The board uses the active NFL schedule week, not the latest stat-row week."/><div className="projectionBoard">{allPlayers.filter(p=>p.matchup&&!p.matchup.bye&&p.matchup.status!=='FINAL').sort((a,b)=>(b.matchup?.projection||0)-(a.matchup?.projection||0)).map(p=><div className="projectionRow" key={p.id}><div><b>{p.name}</b><small>{p.pos} · {p.team} vs {p.matchup?.opponent}</small></div><div className="projNums">{p.pos==='QB'?<><strong>{f(p.matchup?.projectedStats.passYards)} pass yds</strong><span>{f(p.matchup?.projectedStats.passAttempts)} att · {f(p.matchup?.projectedStats.passTDs)} pass TD</span></>:p.pos==='RB'?<><strong>{f(p.matchup?.projectedStats.rushYards)} rush yds</strong><span>{f(p.matchup?.projectedStats.carries)} car · {f(p.matchup?.projectedStats.recYards)} rec yds · {f((p.matchup?.projectedStats.rushTDs||0)+(p.matchup?.projectedStats.recTDs||0))} TD</span></>:<><strong>{f(p.matchup?.projectedStats.recYards)} rec yds</strong><span>{f(p.matchup?.projectedStats.receptions)} rec · {f(p.matchup?.projectedStats.targets)} tgt · {f(p.matchup?.projectedStats.recTDs)} TD</span></>}</div></div>)}</div></>}
-{tab==='Validation'&&<><Info title="Core Walk-Forward Validation" text={data?.validation?`The validated core currently covers Weeks ${data.validation.weeks.join(', ')} using only pregame information. Matchup Intelligence 2.0 adds live snap/PFR and deeper matchup features; those features are marked as awaiting expanded historical calibration rather than being falsely labeled validated.`:"Loading walk-forward validation…"}/>{data?.validation&&<><section className="validationHero"><div><small>PLAYER-GAMES TESTED</small><strong>{data.validation.overall.n}</strong></div><div><small>MODEL MAE</small><strong>{f(data.validation.overall.mae)}</strong></div><div><small>BASELINE MAE</small><strong>{f(data.validation.overall.baselineMae)}</strong></div><div><small>VS BASELINE</small><strong>{data.validation.overall.improvement>0?'+':''}{f(data.validation.overall.improvement)}%</strong></div><div><small>MODEL BIAS</small><strong>{data.validation.overall.bias>0?'+':''}{f(data.validation.overall.bias)}</strong></div></section><h2>Accuracy by position</h2><div className="validationGrid">{Object.entries(data.validation.byPosition).map(([p,m])=><div className="validationCard" key={p}><b>{p}</b><span><small>SAMPLE</small><strong>{m.n}</strong></span><span><small>MAE</small><strong>{f(m.mae)}</strong></span><span><small>RMSE</small><strong>{f(m.rmse)}</strong></span><span><small>BIAS</small><strong>{m.bias>0?'+':''}{f(m.bias)}</strong></span><span><small>BASELINE</small><strong>{f(m.baselineMae)}</strong></span><span><small>IMPROVEMENT</small><strong>{m.improvement>0?'+':''}{f(m.improvement)}%</strong></span></div>)}</div><h2>Week-by-week</h2><div className="weekValidation">{Object.entries(data.validation.byWeek).map(([w,m])=><div><b>W{w}</b><span>{m.n} samples</span><span>MAE {f(m.mae)}</span><span>Bias {m.bias>0?'+':''}{f(m.bias)}</span><span>vs baseline {m.improvement>0?'+':''}{f(m.improvement)}%</span></div>)}</div><h2>Largest misses</h2><div className="misses">{data.validation.worst.map((x:any)=><div><span><b>{x.name}</b><small>W{x.week} · {x.pos} · {x.team}</small></span><span>Proj <b>{f(x.projection)}</b></span><span>Actual <b>{f(x.actual)}</b></span><span className={x.error>0?'over':'under'}>{x.error>0?'OVER':'UNDER'} {f(Math.abs(x.error))}</span></div>)}</div><p className="validationNote">MAE is average absolute yardage error. Bias above zero means the model overprojects; below zero means it underprojects. “Vs baseline” measures whether the model beats simply using that player's pregame season average. Positive is better. No sportsbook data is used.</p></>}</>}
-{tab==='Model'&&<><Info title="Gridiron Guru Matchup Intelligence 2.0" text={"PIPELINE: schedule/expected starter → injury/availability → snap-informed role → true play environment → position-specific opportunity → shrunk efficiency → opponent EPA/success/pressure/position tendencies → touchdown environment. Live snap counts and PFR advanced feeds are optional-safe: missing data is exposed rather than silently fabricated. Sportsbook prices remain disconnected. "+(data?('Current feed: '+data.playerCount+' players through Week '+data.throughWeek+'.'):'')}/>{data?.dataStatus&&<section className="feedStatus"><span><small>PLAY BY PLAY</small><b>{data.dataStatus.pbp?'CONNECTED · '+data.dataStatus.pbp:'MISSING'}</b></span><span><small>SNAP COUNTS</small><b>{data.dataStatus.snaps?'CONNECTED · '+data.dataStatus.snaps:'MISSING'}</b></span><span><small>PFR PASS</small><b>{data.dataStatus.pfrPass?'CONNECTED · '+data.dataStatus.pfrPass:'MISSING'}</b></span><span><small>PFR RUSH</small><b>{data.dataStatus.pfrRush?'CONNECTED · '+data.dataStatus.pfrRush:'MISSING'}</b></span><span><small>PFR REC</small><b>{data.dataStatus.pfrRec?'CONNECTED · '+data.dataStatus.pfrRec:'MISSING'}</b></span><span><small>MARKET INPUTS</small><b>0 · DISCONNECTED</b></span></section>}</>}
-</main><footer>GRIDIRON GURU · PREDICTION FIRST · MATCHUP INTELLIGENCE 2.0</footer></>}
-function Stat({k,v}:{k:string,v:string}){return <div><small>{k}</small><b>{v}</b></div>}function Info({title,text}:{title:string,text:string}){return <section className="info"><small>MODEL STATUS</small><h1>{title}</h1><p>{text}</p></section>}createRoot(document.getElementById('root')!).render(<App/>);
+import React,{useEffect,useMemo,useState}from'react';
+import{createRoot}from'react-dom/client';
+import'./style.css';
+
+type P=any;
+type D=any;
+type VMetric={n:number,mae:number,rmse:number,bias:number,baselineMae:number,improvement:number};
+
+const f=(x:any,d=1)=>Number.isFinite(Number(x))?Number(x).toFixed(d):'—';
+const navItems=[
+  {key:'Projections',label:'Projections',icon:'◎'},
+  {key:'Player Lab',label:'Players',icon:'⌕'},
+  {key:'Games',label:'Games',icon:'▦'},
+  {key:'Validation',label:'Accuracy',icon:'✓'},
+  {key:'Model',label:'Model',icon:'⚙'}
+];
+
+function App(){
+  const[tab,setTab]=useState('Player Lab');
+  const[data,setData]=useState<D|null>(null);
+  const[err,setErr]=useState('');
+  const[q,setQ]=useState('');
+  const[pos,setPos]=useState('ALL');
+
+  useEffect(()=>{
+    fetch('/api/nfl',{cache:'no-store'})
+      .then(r=>r.json())
+      .then(x=>x.error?setErr(x.error):setData(x))
+      .catch(e=>setErr(String(e)));
+  },[]);
+
+  const players=useMemo(()=>data?.players
+    ?.filter((p:P)=>(pos==='ALL'||p.pos===pos)&&p.name.toLowerCase().includes(q.toLowerCase()))
+    .slice(0,80)||[],[data,q,pos]);
+
+  const activePlayers=useMemo(()=>[...(data?.players||[])]
+    .filter((p:P)=>p.matchup&&!p.matchup.bye&&p.matchup.status!=='FINAL')
+    .sort((a:P,b:P)=>(b.matchup?.projection||0)-(a.matchup?.projection||0)),[data]);
+
+  return <div className="appShell">
+    <header className="appHeader">
+      <div className="brand"><b>GRIDIRON <i>GURU</i></b><small>NFL PREDICTION INTELLIGENCE</small></div>
+      <div className="weekBadge">W{data?.projectionWeek??'—'}</div>
+    </header>
+
+    <nav className="topNav">{navItems.map(x=><button key={x.key} className={tab===x.key?'active':''} onClick={()=>setTab(x.key)}>{x.label}</button>)}</nav>
+
+    <main>
+      {err&&<div className="error">Data feed error: {err}</div>}
+
+      {tab==='Player Lab'&&<>
+        <CompactHero data={data} title="Player projections" subtitle="Search any player. The model details stay out of the way until you want them."/>
+        <PlayerFilters q={q} setQ={setQ} pos={pos} setPos={setPos}/>
+        <div className="sectionTitle"><h2>Players</h2><span>{players.length} shown</span></div>
+        {!data&&!err&&<Loading/>}
+        <div className="playerList">{players.map((p:P)=><PlayerCard key={p.id||p.name} p={p} week={data?.projectionWeek}/>)}</div>
+      </>}
+
+      {tab==='Projections'&&<>
+        <CompactHero data={data} title={`Week ${data?.projectionWeek??'—'} projections`} subtitle="Clean forecast board. No sportsbook lines are used to create these numbers."/>
+        <PlayerFilters q={q} setQ={setQ} pos={pos} setPos={setPos}/>
+        <div className="playerList">{activePlayers.filter((p:P)=>(pos==='ALL'||p.pos===pos)&&p.name.toLowerCase().includes(q.toLowerCase())).slice(0,100).map((p:P)=><PlayerCard key={p.id||p.name} p={p} week={data?.projectionWeek}/>)}</div>
+      </>}
+
+      {tab==='Games'&&<>
+        <CompactHero data={data} title="Game environments" subtitle="The game layer feeds player volume, efficiency and matchup context."/>
+        <div className="gameList">{data?.upcoming?.map((g:any)=><GameCard key={g.away+g.home} g={g}/>)}</div>
+      </>}
+
+      {tab==='Validation'&&<>
+        <CompactHero data={data} title="Model accuracy" subtitle="Walk-forward results use only information that was available before each game."/>
+        {data?.validation?<ValidationView validation={data.validation}/>:<Loading/>}
+      </>}
+
+      {tab==='Model'&&<>
+        <CompactHero data={data} title="Matchup Intelligence 2.0" subtitle="The engine stays deep. The everyday interface stays simple."/>
+        <section className="modelCard">
+          <h3>Projection pipeline</h3>
+          <p>Expected starter and availability → snap-informed role → team play environment → player opportunity → shrunk efficiency → opponent and position matchup → touchdown environment.</p>
+          <p className="muted">Sportsbook prices remain disconnected from the prediction engine. Live route participation and live forecast weather remain explicit data gaps.</p>
+        </section>
+        {data?.dataStatus&&<section className="feedGrid">
+          <Feed label="Play by play" value={data.dataStatus.pbp}/>
+          <Feed label="Snap counts" value={data.dataStatus.snaps}/>
+          <Feed label="PFR passing" value={data.dataStatus.pfrPass}/>
+          <Feed label="PFR rushing" value={data.dataStatus.pfrRush}/>
+          <Feed label="PFR receiving" value={data.dataStatus.pfrRec}/>
+          <Feed label="Market inputs" value={0} disconnected/>
+        </section>}
+      </>}
+    </main>
+
+    <nav className="bottomNav">{navItems.map(x=><button key={x.key} className={tab===x.key?'active':''} onClick={()=>setTab(x.key)}><span>{x.icon}</span><small>{x.label}</small></button>)}</nav>
+  </div>
+}
+
+function CompactHero({data,title,subtitle}:{data:D|null,title:string,subtitle:string}){
+  return <section className="compactHero">
+    <div><small>WEEK {data?.projectionWeek??'—'} · DATA THROUGH W{data?.throughWeek??'—'}</small><h1>{title}</h1><p>{subtitle}</p></div>
+    <div className="liveDot"><span/> LIVE</div>
+  </section>
+}
+
+function PlayerFilters({q,setQ,pos,setPos}:{q:string,setQ:(v:string)=>void,pos:string,setPos:(v:string)=>void}){
+  return <div className="filterWrap">
+    <div className="searchBox"><span>⌕</span><input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search player"/></div>
+    <div className="posTabs">{['ALL','QB','RB','WR','TE'].map(x=><button key={x} className={pos===x?'active':''} onClick={()=>setPos(x)}>{x}</button>)}</div>
+  </div>
+}
+
+function PlayerCard({p,week}:{p:P,week:number}){
+  const m=p.matchup,ps=m?.projectedStats||{};
+  const out=String(p.injury?.status||'').toLowerCase().includes('out');
+  const role=p.role?.expectedRole||p.role?.status||'ROLE PENDING';
+  const matchup=m?.grade&&m.grade!=='BYE'?m.grade:'';
+  const totalTd=(ps.rushTDs||0)+(ps.recTDs||0);
+
+  return <article className="playerCard">
+    <div className="playerHead">
+      <div>
+        <h3>{p.name}</h3>
+        <p>{p.pos} · {p.team}{m?.opponent?` vs ${m.opponent}`:''}</p>
+      </div>
+      <div className="chips">
+        {role&&<span className="chip">{role}</span>}
+        {matchup&&<span className={`chip matchupChip ${matchup.toLowerCase()}`}>{matchup}</span>}
+      </div>
+    </div>
+
+    {p.injury&&<div className={`injuryBanner ${out?'out':''}`}><b>{p.injury.status}</b><span>{[p.injury.detail,p.injury.practice].filter(Boolean).join(' · ')||'Official injury report listing'}</span></div>}
+
+    {m?.bye?<div className="emptyState"><b>Week {week} bye</b><span>No game scheduled.</span></div>
+    :m?.status==='FINAL'?<div className="emptyState"><b>Week {week} final</b><span>This game has already been played.</span></div>
+    :m?<>
+      <div className={`projectionStats ${p.pos.toLowerCase()}`}>
+        {p.pos==='QB'?<>
+          <ProjStat value={f(ps.passYards)} label="Pass Yds"/>
+          <ProjStat value={f(ps.passAttempts)} label="Pass Att"/>
+          <ProjStat value={f(ps.passTDs)} label="Pass TD"/>
+          <ProjStat value={f(ps.rushYards)} label="Rush Yds"/>
+        </>:p.pos==='RB'?<>
+          <ProjStat value={f(ps.rushYards)} label="Rush Yds"/>
+          <ProjStat value={f(ps.carries)} label="Carries"/>
+          <ProjStat value={f(ps.recYards)} label="Rec Yds"/>
+          <ProjStat value={f(ps.receptions)} label="Rec"/>
+          <ProjStat value={f(ps.targets)} label="Targets"/>
+          <ProjStat value={f(totalTd)} label="Total TD"/>
+        </>:<>
+          <ProjStat value={f(ps.recYards)} label="Rec Yds"/>
+          <ProjStat value={f(ps.receptions)} label="Rec"/>
+          <ProjStat value={f(ps.targets)} label="Targets"/>
+          <ProjStat value={f(ps.recTDs)} label="Rec TD"/>
+        </>}
+      </div>
+
+      <div className="quickContext">
+        <span>{m.home?'Home':'Away'}</span>
+        <span>{m.weather?.status==='CONTROLLED'?'Indoor/controlled':m.weather?.status||'Weather pending'}</span>
+        {m.rest?<span>{m.rest}d rest</span>:null}
+      </div>
+
+      <details className="analysisDetails">
+        <summary><span><b>Why this projection?</b><small>Role, matchup, usage and model inputs</small></span><i>＋</i></summary>
+        <div className="analysisBody">
+          <AnalysisSection title="Role & usage">
+            <Audit label="Projected role" value={role}/>
+            <Audit label={p.pos==='QB'?'Attempt share':p.pos==='RB'?'Carry share':'Target share'} value={f(p.pos==='QB'?p.role?.projectedAttemptShare:p.pos==='RB'?p.role?.projectedCarryShare:p.role?.projectedTargetShare)+'%'}/>
+            <Audit label="Snap share" value={p.usage?.snapGames?f(p.usage.recentSnapPct)+'%':'Pending'}/>
+            <Audit label="Snap trend" value={p.usage?.snapGames?(p.usage.snapTrend>0?'+':'')+f(p.usage.snapTrend)+'%':'—'}/>
+            <Audit label="Role source" value={p.role?.roleSource||'Historical usage'}/>
+            <Audit label="Role confidence" value={(p.role?.confidence??'—')+'/100'}/>
+          </AnalysisSection>
+
+          <AnalysisSection title="Game & matchup">
+            <Audit label="Expected team plays" value={f(m.environment?.expectedPlays)}/>
+            <Audit label="Expected pass rate" value={f(m.environment?.passRate)+'%'}/>
+            <Audit label="Expected player volume" value={f(m.environment?.playerVolume)}/>
+            <Audit label="Expected player snaps" value={f(m.intelligence?.expectedPlayerSnaps)}/>
+            <Audit label="Position volume" value={f(m.intelligence?.positionVolumeFactor)+'×'}/>
+            <Audit label="Position efficiency" value={f(m.intelligence?.positionEfficiencyFactor)+'×'}/>
+            <Audit label="TD environment" value={f(m.intelligence?.tdEnvironmentFactor)+'×'}/>
+            <Audit label="Opponent EPA/play" value={f(m.defense?.advanced?.epaPerPlay,2)}/>
+          </AnalysisSection>
+
+          {p.pos==='QB'&&<AnalysisSection title="Quarterback efficiency">
+            <Audit label="Starter attempt base" value={f(p.model?.starterAttemptBase)}/>
+            <Audit label="Projected attempts" value={f(ps.passAttempts)}/>
+            <Audit label="Calibrated Y/A" value={f(ps.calibratedYPA||p.model?.passYPA)}/>
+            <Audit label="Matchup Y/A" value={f(ps.matchupYPA||p.model?.passYPA)}/>
+          </AnalysisSection>}
+
+          <AnalysisSection title="Recent game evidence">
+            <div className="recentStrip">{p.trend?.map((g:any)=><span key={g.week}><small>W{g.week}</small><b>{p.pos==='QB'?g.pass:p.pos==='RB'?g.rush:g.rec}</b><em>{p.pos==='QB'?'pass yds':p.pos==='RB'?'rush yds':'rec yds'}</em></span>)}</div>
+          </AnalysisSection>
+
+          <p className="methodNote">Projection flow: role and snaps → team environment → opportunity → shrunk player efficiency → position-specific defense and play-by-play matchup → touchdown environment.</p>
+        </div>
+      </details>
+    </>:<div className="emptyState"><span>Projection pending.</span></div>}
+  </article>
+}
+
+function ProjStat({value,label}:{value:string,label:string}){
+  return <div><strong>{value}</strong><small>{label}</small></div>
+}
+
+function AnalysisSection({title,children}:{title:string,children:React.ReactNode}){
+  return <section className="analysisSection"><h4>{title}</h4><div className="auditGrid">{children}</div></section>
+}
+
+function Audit({label,value}:{label:string,value:string}){
+  return <div className="auditItem"><small>{label}</small><b>{value}</b></div>
+}
+
+function GameCard({g}:{g:any}){
+  return <article className="gameCard">
+    <div className="gameTeams"><div><small>AWAY</small><b>{g.away}</b></div><span>@</span><div><small>HOME</small><b>{g.home}</b></div></div>
+    <p>{g.start} · {g.stadium||'Venue pending'}</p>
+    <div className="gameQuick">
+      <span><small>Expected QBs</small><b>{g.awayQb||'TBD'} / {g.homeQb||'TBD'}</b></span>
+      <span><small>Rest</small><b>{g.away} {g.awayRest||'—'}d · {g.home} {g.homeRest||'—'}d</b></span>
+      <span><small>Environment</small><b>{g.roof==='dome'||g.roof==='closed'?'Controlled':g.temp!=null||g.wind!=null?`${g.temp??'—'}° · ${g.wind??'—'} mph`:'Pending'}</b></span>
+    </div>
+    <details className="analysisDetails">
+      <summary><span><b>Game model details</b><small>Pace, pass tendency and defensive efficiency</small></span><i>＋</i></summary>
+      <div className="analysisBody"><div className="gameAudit">
+        <Audit label={g.away+' plays'} value={f(g.awayOffense?.advanced?.playsPerGame)}/>
+        <Audit label={g.home+' plays'} value={f(g.homeOffense?.advanced?.playsPerGame)}/>
+        <Audit label={g.away+' neutral pass'} value={f(g.awayOffense?.advanced?.neutralPassRate)+'%'}/>
+        <Audit label={g.home+' neutral pass'} value={f(g.homeOffense?.advanced?.neutralPassRate)+'%'}/>
+        <Audit label={g.away+' DEF EPA'} value={f(g.awayDefense?.advanced?.epaPerPlay,2)}/>
+        <Audit label={g.home+' DEF EPA'} value={f(g.homeDefense?.advanced?.epaPerPlay,2)}/>
+      </div></div>
+    </details>
+  </article>
+}
+
+function ValidationView({validation}:{validation:any}){
+  return <>
+    <section className="accuracyHero">
+      <div><small>PLAYER-GAMES</small><strong>{validation.overall.n}</strong></div>
+      <div><small>MODEL MAE</small><strong>{f(validation.overall.mae)}</strong></div>
+      <div><small>VS BASELINE</small><strong>{validation.overall.improvement>0?'+':''}{f(validation.overall.improvement)}%</strong></div>
+    </section>
+    <div className="accuracyList">{Object.entries(validation.byPosition||{}).map(([p,m]:any)=><div key={p}><b>{p}</b><span>MAE {f(m.mae)}</span><span>Bias {m.bias>0?'+':''}{f(m.bias)}</span><span>{m.improvement>0?'+':''}{f(m.improvement)}% vs baseline</span></div>)}</div>
+    <details className="analysisDetails standalone">
+      <summary><span><b>Full validation details</b><small>RMSE, week-by-week results and largest misses</small></span><i>＋</i></summary>
+      <div className="analysisBody">
+        <div className="validationGrid">{Object.entries(validation.byPosition||{}).map(([p,m]:any)=><div className="validationCard" key={p}><b>{p}</b><span>Sample {m.n}</span><span>MAE {f(m.mae)}</span><span>RMSE {f(m.rmse)}</span><span>Bias {m.bias>0?'+':''}{f(m.bias)}</span><span>Baseline {f(m.baselineMae)}</span></div>)}</div>
+        <h4>Largest misses</h4>
+        <div className="misses">{validation.worst?.map((x:any)=><div key={x.week+x.id}><span><b>{x.name}</b><small>W{x.week} · {x.pos}</small></span><span>Proj {f(x.projection)}</span><span>Actual {f(x.actual)}</span></div>)}</div>
+      </div>
+    </details>
+  </>
+}
+
+function Feed({label,value,disconnected=false}:{label:string,value:number,disconnected?:boolean}){
+  return <div><small>{label}</small><b className={disconnected?'off':''}>{disconnected?'Disconnected':value?`Connected · ${value}`:'Missing'}</b></div>
+}
+
+function Loading(){return <div className="loading">Loading projection data…</div>}
+
+createRoot(document.getElementById('root')!).render(<App/>);
