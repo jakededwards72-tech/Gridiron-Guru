@@ -15,7 +15,8 @@ const snaps=snr&&snr.ok?csv(await snr.text()):[];
 const pfrPass=pfrp&&pfrp.ok?csv(await pfrp.text()):[];
 const pfrRush=pfrr&&pfrr.ok?csv(await pfrr.text()):[];
 const pfrRec=pfrc&&pfrc.ok?csv(await pfrc.text()):[];
-let pbp=[];if(pbr&&pbr.ok){try{const z=new Uint8Array(await pbr.arrayBuffer());const raw=new TextDecoder().decode(require('zlib').gunzipSync(z));pbp=csv(raw)}catch(e){pbp=[]}}const injuries=ir&&ir.ok?csv(await ir.text()):[];const injuryBy={};for(const x of injuries){const id=x.gsis_id||x.player_id||x.full_name||x.player_name;if(id)injuryBy[id]=x}const prevBy={};for(const r of prev){const id=r.player_id||r.player_name;if(id)(prevBy[id]??=[]).push(r)}const games=csv(await sc.text()).filter(r=>n(r.season)===season&&r.game_type==='REG');const maxWeek=Math.max(0,...stats.map(r=>n(r.week)));const pbpTeam={},pbpOff={};
+let pbp=[];if(pbr&&pbr.ok){try{const z=new Uint8Array(await pbr.arrayBuffer());const raw=new TextDecoder().decode(require('zlib').gunzipSync(z));pbp=csv(raw)}catch(e){pbp=[]}}const injuries=ir&&ir.ok?csv(await ir.text()):[];const injuryBy={};
+for(const x of injuries){const keys=[x.gsis_id,x.player_id,x.full_name,x.player_name].filter(Boolean);for(const id of keys){const cur=injuryBy[id],cw=n(cur?.week),nw=n(x.week),cd=String(cur?.date_modified||cur?.date||''),nd=String(x.date_modified||x.date||'');if(!cur||nw>cw||(nw===cw&&nd>=cd))injuryBy[id]=x}}const prevBy={};for(const r of prev){const id=r.player_id||r.player_name;if(id)(prevBy[id]??=[]).push(r)}const games=csv(await sc.text()).filter(r=>n(r.season)===season&&r.game_type==='REG');const maxWeek=Math.max(0,...stats.map(r=>n(r.week)));const pbpTeam={},pbpOff={};
 for(const x of pbp){
  if(n(x.season)!==season||n(x.week)>maxWeek)continue;
  const isPass=!!(n(x.qb_dropback)||n(x.pass_attempt)||n(x.sack)||x.play_type==='pass'),isRush=!!(n(x.rush_attempt)||x.play_type==='run');
